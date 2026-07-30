@@ -44,7 +44,6 @@ async function supabaseRpc(functionName: string, parameters: Record<string, stri
     method: "POST",
     headers: {
       apikey: secret,
-      Authorization: `Bearer ${secret}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(parameters),
