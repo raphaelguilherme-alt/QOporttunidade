@@ -17,9 +17,10 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
-  // Keep the cache inside the project. Next 16 cannot reliably resolve external
-  // React modules when the build directory is a junction outside the workspace.
-  distDir: process.env.NEXT_DIST_DIR || ".next-runtime",
+  // Vercel's Next.js builder requires the conventional `.next` directory.
+  // Locally, keep a separate directory because `.next` can be an external
+  // junction in this workspace.
+  distDir: process.env.NEXT_DIST_DIR || (process.env.VERCEL ? ".next" : ".next-runtime"),
   poweredByHeader: false,
   images: {
     formats: ["image/avif", "image/webp"],
