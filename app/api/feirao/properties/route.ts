@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  let stage: "security" | "catalog" = "security";
   try {
     const ipHash = anonymousKey(`catalog:${clientIp(request)}`);
     const limit = await enforceRateLimit(`catalog:${ipHash}`, 30, 60);
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
       { error: "request_rejected" },
       { status: 429, headers: { "Cache-Control": "no-store", "Retry-After": String(limit.retryAfter) } },
     );
+    stage = "catalog";
     const catalog = await getCampaignProperties();
     return NextResponse.json({ properties: catalog.properties, updatedAt: catalog.updatedAt }, {
       headers: {
@@ -20,7 +22,23 @@ export async function GET(request: NextRequest) {
         "X-Content-Type-Options": "nosniff",
       },
     });
-  } catch {
+  } catch (error) {
+    const knownKinds = new Set([
+      "security_configuration",
+      "rate_limit_configuration",
+      "rate_limit_unavailable",
+    ]);
+    const message = error instanceof Error ? error.message : "";
+    const kind = knownKinds.has(message)
+      ? message
+      : message.startsWith("Imobzi request failed:")
+        ? message.replace("Imobzi request failed:", "").trim()
+        : "unexpected";
+    console.error(JSON.stringify({
+      event: "catalog_request_failed",
+      stage,
+      kind,
+    }));
     return NextResponse.json(
       { properties: [], updatedAt: null, error: "service_unavailable" },
       { status: 503, headers: { "Cache-Control": "no-store" } },
