@@ -21,36 +21,65 @@ export function anonymousKey(value: string) {
     .digest("hex");
 }
 
-async function redisCommand(command: Array<string | number>) {
-  const url = process.env.KV_REST_API_URL;
-  const token = process.env.KV_REST_API_TOKEN;
-  if (!url || !token) {
+type SupabaseResult = { configured: false } | { configured: true; value: unknown };
+
+async function supabaseRpc(functionName: string, parameters: Record<string, string | number>) : Promise<SupabaseResult> {
+  const configuredUrl = process.env.SUPABASE_URL;
+  const secret = process.env.SUPABASE_SECRET_KEY;
+  if (!configuredUrl || !secret) {
     if (process.env.NODE_ENV === "production") throw new Error("rate_limit_configuration");
-    return null;
+    return { configured: false };
   }
-  const endpoint = new URL(url);
-  if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password)
+  const baseUrl = new URL(configuredUrl);
+  if (
+    baseUrl.protocol !== "https:"
+    || baseUrl.username
+    || baseUrl.password
+    || baseUrl.port
+    || !baseUrl.hostname.endsWith(".supabase.co")
+  )
     throw new Error("rate_limit_configuration");
+  const endpoint = new URL(`/rest/v1/rpc/${functionName}`, baseUrl);
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(command),
+    headers: {
+      apikey: secret,
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(parameters),
     redirect: "error",
     signal: AbortSignal.timeout(4000),
     cache: "no-store",
   });
   if (!response.ok) throw new Error("rate_limit_unavailable");
-  const body = await response.json() as { result?: unknown };
-  return body.result;
+  if (!response.headers.get("content-type")?.includes("application/json"))
+    throw new Error("rate_limit_unavailable");
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > 32 * 1024) throw new Error("rate_limit_unavailable");
+  const text = await response.text();
+  if (text.length > 32 * 1024) throw new Error("rate_limit_unavailable");
+  try {
+    return { configured: true, value: JSON.parse(text) as unknown };
+  } catch {
+    throw new Error("rate_limit_unavailable");
+  }
 }
 
 export async function enforceRateLimit(key: string, limit: number, windowSeconds: number) {
   const namespaced = `qopp:rl:${key}`;
-  const remote = await redisCommand(["INCR", namespaced]);
-  if (remote !== null) {
-    const count = Number(remote);
-    if (count === 1) await redisCommand(["EXPIRE", namespaced, windowSeconds]);
-    return { allowed: count <= limit, retryAfter: windowSeconds };
+  const remote = await supabaseRpc("qopp_rate_limit", {
+    p_key: namespaced,
+    p_limit: limit,
+    p_window_seconds: windowSeconds,
+  });
+  if (remote.configured) {
+    const row = Array.isArray(remote.value) ? remote.value[0] : remote.value;
+    if (!row || typeof row !== "object") throw new Error("rate_limit_unavailable");
+    const result = row as { allowed?: unknown; retry_after?: unknown };
+    if (typeof result.allowed !== "boolean" || !Number.isInteger(Number(result.retry_after)))
+      throw new Error("rate_limit_unavailable");
+    return { allowed: result.allowed, retryAfter: Math.max(1, Number(result.retry_after)) };
   }
   const now = Date.now();
   const current = memoryCounters.get(namespaced);
@@ -63,8 +92,14 @@ export async function enforceRateLimit(key: string, limit: number, windowSeconds
 
 export async function reserveIdempotency(key: string, seconds: number) {
   const namespaced = `qopp:dedupe:${key}`;
-  const remote = await redisCommand(["SET", namespaced, "1", "EX", seconds, "NX"]);
-  if (remote !== null) return remote === "OK";
+  const remote = await supabaseRpc("qopp_reserve_idempotency", {
+    p_key: namespaced,
+    p_ttl_seconds: seconds,
+  });
+  if (remote.configured) {
+    if (typeof remote.value !== "boolean") throw new Error("rate_limit_unavailable");
+    return remote.value;
+  }
   const now = Date.now();
   const existing = memoryCounters.get(namespaced);
   if (existing && existing.expiresAt > now) return false;
@@ -74,8 +109,8 @@ export async function reserveIdempotency(key: string, seconds: number) {
 
 export async function releaseIdempotency(key: string) {
   const namespaced = `qopp:dedupe:${key}`;
-  const remote = await redisCommand(["DEL", namespaced]);
-  if (remote === null) memoryCounters.delete(namespaced);
+  const remote = await supabaseRpc("qopp_release_idempotency", { p_key: namespaced });
+  if (!remote.configured) memoryCounters.delete(namespaced);
 }
 
 export function validateSameOrigin(request: NextRequest) {

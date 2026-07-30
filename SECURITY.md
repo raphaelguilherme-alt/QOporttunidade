@@ -32,8 +32,8 @@ IMOBZI_API_TIMEOUT_MS=
 IMOBZI_ALLOWED_HOST=
 APP_ALLOWED_ORIGINS=
 LEAD_HASH_KEY=
-KV_REST_API_URL=
-KV_REST_API_TOKEN=
+SUPABASE_URL=
+SUPABASE_SECRET_KEY=
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=
 TURNSTILE_SECRET_KEY=
 TURNSTILE_HOSTNAMES=
@@ -50,7 +50,8 @@ armazenamento distribuído ou as credenciais dedicadas estiverem ausentes.
    Development, Preview e Production. Não fornecer chaves de produção a previews.
 2. Definir `APP_ALLOWED_ORIGINS` e `TURNSTILE_HOSTNAMES` apenas com domínios
    exatos; não usar wildcard.
-3. Conectar KV compatível com a API REST da Upstash/Vercel.
+3. Executar a migration em `supabase/migrations` e cadastrar a URL e a Secret
+   Key server-side do Supabase. A tabela de segurança permanece em schema privado.
 4. Ativar Deployment Protection para Preview e manter somente Production pública.
 5. Configurar o Cron para `/api/internal/catalog/sync` com `CRON_SECRET`.
 6. Ativar MFA, revisar membros e restringir alterações de variáveis sensíveis.
@@ -119,5 +120,6 @@ quando aplicável e confirmação das configurações manuais.
 - Catálogo sanitizado: HTTP 200 em execução local.
 - Manipulação: origem externa/ausente 403; método errado 405; JSON, campo extra,
   HTML e código em formato de URL 400; corpo maior que 4 KB 413.
-- Rate limit: sexta tentativa no mesmo IP retornou 429 com `Retry-After`.
+- Rate limit: sexta tentativa no mesmo IP retornou 429 com `Retry-After`. Em
+  produção, contadores e reservas atômicas usam funções privadas do Supabase.
 - O histórico Git não pôde ser testado porque `.git` não existe neste diretório.
