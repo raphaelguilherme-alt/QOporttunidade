@@ -1,0 +1,10 @@
+.env*
+!.env.example
+.next/
+.next-*/
+.validation/
+.lint-output.txt
+node_modules/
+review/
+*.log
+*.tsbuildinfo

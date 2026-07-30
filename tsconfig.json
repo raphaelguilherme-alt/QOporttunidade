@@ -1,0 +1,57 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".next-dev-3004-cache/types/**/*.ts",
+    ".next-dev-3004-v2/types/**/*.ts",
+    ".next-prod/types/**/*.ts",
+    ".next-test-leads/types/**/*.ts",
+    ".next-validation-73/types/**/*.ts",
+    ".next-validation-final/types/**/*.ts",
+    ".next-validation-hero/types/**/*.ts",
+    ".next-validation-visual/types/**/*.ts",
+    ".next-validation/types/**/*.ts",
+    ".next/types/**/*.ts",
+    "next-env.d.ts",
+    ".next-security-validation/types/**/*.ts",
+    ".next-security-validation/dev/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    ".next-runtime/types/**/*.ts",
+    ".next-runtime/dev/types/**/*.ts",
+    ".next-security-validation-final/types/**/*.ts",
+    ".next-security-validation-final/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
