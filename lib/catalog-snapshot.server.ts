@@ -2,6 +2,10 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import fallbackJson from "./catalog-fallback.json";
 import type { PublicCampaignProperty } from "./public-property";
+import {
+  PROMOTIONAL_INVENTORY,
+  type PromotionalInventoryItem,
+} from "./promotional-inventory";
 
 export type CatalogSnapshot = {
   version: number;
@@ -12,6 +16,29 @@ export type CatalogSnapshot = {
 
 const fallback = fallbackJson as CatalogSnapshot;
 const approvedImageHost = "lh3.googleusercontent.com";
+const promotionalInventoryByCode = new Map<string, PromotionalInventoryItem>(
+  PROMOTIONAL_INVENTORY.map(item => [item.code, item]),
+);
+
+function applyCurrentPromotionalPrice(property: PublicCampaignProperty): PublicCampaignProperty {
+  const promotion = promotionalInventoryByCode.get(property.code);
+  if (!promotion) return property;
+  const fairPrice = promotion.promotionalPriceCents / 100;
+  const effectivePrice = (promotion.cashPriceCents ?? promotion.promotionalPriceCents) / 100;
+  const validDiscount = property.originalPrice !== null && property.originalPrice > effectivePrice;
+  const savings = validDiscount ? property.originalPrice! - effectivePrice : null;
+  return {
+    ...property,
+    fairPrice,
+    effectivePrice,
+    downPayment: promotion.downPaymentCents ? promotion.downPaymentCents / 100 : null,
+    cashPrice: promotion.cashPriceCents ? promotion.cashPriceCents / 100 : null,
+    savings,
+    discountPercentage: validDiscount
+      ? Math.round((savings! / property.originalPrice!) * 100)
+      : 0,
+  };
+}
 
 function originalImageUrl(value: string) {
   const url = new URL(value);
@@ -50,7 +77,7 @@ function validateSnapshot(value: unknown): CatalogSnapshot | null {
     || !snapshot.properties.every(validProperty)) return null;
   return {
     ...(snapshot as CatalogSnapshot),
-    properties: snapshot.properties.map(property => ({
+    properties: snapshot.properties.map(property => applyCurrentPromotionalPrice({
       ...property,
       images: property.images.map(image => {
         const displayUrl = originalImageUrl(image.displayUrl);
