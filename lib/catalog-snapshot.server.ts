@@ -18,6 +18,11 @@ function originalImageUrl(value: string) {
   url.pathname = `${url.pathname.replace(/=s\d+$/i, "")}=s0`;
   return url.toString();
 }
+function thumbnailImageUrl(value: string) {
+  const url = new URL(value);
+  url.pathname = `${url.pathname.replace(/=s\d+$/i, "")}=s160`;
+  return url.toString();
+}
 
 function validProperty(value: unknown): value is PublicCampaignProperty {
   if (!value || typeof value !== "object") return false;
@@ -54,6 +59,7 @@ function validateSnapshot(value: unknown): CatalogSnapshot | null {
           ...image,
           originalUrl: displayUrl,
           displayUrl,
+          thumbnailUrl: thumbnailImageUrl(image.thumbnailUrl),
           width: changed ? null : image.width,
           height: changed ? null : image.height,
         };

@@ -12,6 +12,12 @@ const originalImageUrl = (value) => {
   url.pathname = `${url.pathname.replace(/=s\d+$/i, "")}=s0`;
   return url.toString();
 };
+const thumbnailImageUrl = (value) => {
+  const url = new URL(value);
+  if (url.hostname !== "lh3.googleusercontent.com") throw new Error("Unexpected catalog image host");
+  url.pathname = `${url.pathname.replace(/=s\d+$/i, "")}=s160`;
+  return url.toString();
+};
 const properties = body.properties.map((property) => ({
   ...property,
   images: property.images.map((image) => {
@@ -21,6 +27,7 @@ const properties = body.properties.map((property) => ({
       ...image,
       originalUrl,
       displayUrl: originalUrl,
+      thumbnailUrl: thumbnailImageUrl(image.thumbnailUrl),
       width: changed ? null : image.width,
       height: changed ? null : image.height,
     };
