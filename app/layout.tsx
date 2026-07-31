@@ -7,6 +7,11 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "Q Oportunidade — +70 imóveis com até 40% de desconto",
   description: "+70 imóveis com até 40% de desconto nas melhores praias do Guarujá.",
+  icons: {
+    icon: [{ url: "/images/logo-q-oportunidade.png", type: "image/png" }],
+    shortcut: "/images/logo-q-oportunidade.png",
+    apple: "/images/logo-q-oportunidade.png",
+  },
   alternates: { canonical: "/" },
   openGraph: {
     title: "Q Oportunidade — +70 imóveis com até 40% de desconto",
