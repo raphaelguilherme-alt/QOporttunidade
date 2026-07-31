@@ -13,6 +13,12 @@ export type CatalogSnapshot = {
 const fallback = fallbackJson as CatalogSnapshot;
 const approvedImageHost = "lh3.googleusercontent.com";
 
+function originalImageUrl(value: string) {
+  const url = new URL(value);
+  url.pathname = `${url.pathname.replace(/=s\d+$/i, "")}=s0`;
+  return url.toString();
+}
+
 function validProperty(value: unknown): value is PublicCampaignProperty {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<PublicCampaignProperty>;
@@ -37,7 +43,23 @@ function validateSnapshot(value: unknown): CatalogSnapshot | null {
   if (snapshot.version !== 1 || typeof snapshot.updatedAt !== "string"
     || !Array.isArray(snapshot.properties) || snapshot.properties.length < 1
     || !snapshot.properties.every(validProperty)) return null;
-  return snapshot as CatalogSnapshot;
+  return {
+    ...(snapshot as CatalogSnapshot),
+    properties: snapshot.properties.map(property => ({
+      ...property,
+      images: property.images.map(image => {
+        const displayUrl = originalImageUrl(image.displayUrl);
+        const changed = displayUrl !== image.displayUrl;
+        return {
+          ...image,
+          originalUrl: displayUrl,
+          displayUrl,
+          width: changed ? null : image.width,
+          height: changed ? null : image.height,
+        };
+      }),
+    })),
+  };
 }
 
 function supabaseEndpoint(path: string) {

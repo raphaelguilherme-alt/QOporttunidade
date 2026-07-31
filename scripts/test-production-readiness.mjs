@@ -11,7 +11,7 @@ const noJs = await browser.newPage({ viewport: { width: 1366, height: 768 }, jav
 const response = await noJs.goto(baseUrl, { waitUntil: "domcontentloaded" });
 assert.equal(response?.status(), 200);
 assert.equal(await noJs.locator("article.card").count(), 6, "the first six properties must be in the initial HTML");
-assert.match(await noJs.locator(".campaignHero").innerText(), /74 imóveis/);
+assert.match(await noJs.locator(".campaignHero").innerText(), /\+70 imóveis/);
 assert.match(await noJs.locator("link[rel=canonical]").getAttribute("href"), /^https:\/\/oportunidade\.qvista\.com\.br\/?$/);
 assert.equal(await noJs.locator('script[type="application/ld+json"]').count(), 1);
 await noJs.close();
@@ -23,7 +23,8 @@ for (const viewport of [{ width: 1366, height: 768 }, { width: 390, height: 844 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.locator(".cardTitleButton").first().waitFor();
   assert.equal(await page.locator("article.card").count(), 6);
-  await page.getByRole("button", { name: /Mostrar mais 12 oportunidades/i }).click();
+  await page.getByRole("button", { name: /Mostrar mais imóveis/i }).click();
+  await page.waitForFunction(() => document.querySelectorAll("article.card").length === 18);
   assert.equal(await page.locator("article.card").count(), 18);
 
   const title = page.locator(".cardTitleButton").first();

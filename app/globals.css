@@ -275,7 +275,7 @@ footer{position:relative;padding:105px 8vw 35px;background:var(--qo-night);color
 @media(prefers-reduced-motion:reduce){.campaignLandscape,.campaignGeneralContent *{animation:none!important}}
 
 /* Visual correction: header, contrast, filters and beaches */
-:root{--z-content:1;--z-decoration:2;--z-filter:30;--z-header:1000;--z-dropdown:1200;--z-modal:2000;--z-whatsapp:2100}
+:root{--z-content:1;--z-decoration:2;--z-filter:30;--z-whatsapp:900;--z-header:1000;--z-dropdown:1200;--z-modal:2000}
 section[id]{scroll-margin-top:110px}
 .siteHeaderStack{position:sticky;z-index:var(--z-header);top:0;width:100%;height:120px;background:var(--qo-night);box-shadow:0 8px 24px #05072a1c}
 .siteHeaderStack .promoBar{position:relative;top:0;height:32px}
@@ -284,7 +284,7 @@ section[id]{scroll-margin-top:110px}
 .siteHeaderStack:has(.header.scrolled){height:96px}
 .siteHeaderStack .header nav a{color:inherit;text-shadow:none}
 .campaignHeroGeneral{margin-top:0}
-.campaignHeroGeneral:before{content:"";position:absolute;z-index:1;inset:0 0 100px;background:linear-gradient(90deg,rgba(5,7,42,.98) 0%,rgba(5,7,42,.94) 24%,rgba(5,7,42,.82) 42%,rgba(5,7,42,.42) 62%,rgba(5,7,42,.08) 82%),linear-gradient(0deg,rgba(5,7,42,.32) 0%,transparent 45%);pointer-events:none}
+.campaignHeroGeneral:before{content:"";position:absolute;z-index:1;inset:0 0 100px;background:linear-gradient(90deg,rgba(5,7,42,.97) 0%,rgba(5,7,42,.91) 26%,rgba(5,7,42,.7) 48%,rgba(5,7,42,.3) 72%,rgba(5,7,42,.05) 100%),linear-gradient(0deg,rgba(5,7,42,.3) 0%,transparent 45%);pointer-events:none}
 .campaignHeroGeneral:after{background:linear-gradient(0deg,rgba(5,7,42,.3),transparent 45%)}
 .campaignGeneralContent{width:min(100%,570px);padding-top:60px}
 .campaignGeneralContent .heroCampaignLogo{width:clamp(190px,17vw,250px);margin-bottom:20px;filter:drop-shadow(0 12px 24px rgba(0,0,0,.42)) drop-shadow(0 0 18px rgba(35,173,223,.32))}
@@ -469,3 +469,29 @@ section[id]{scroll-margin-top:110px}
 .leadTurnstile{min-height:65px;display:grid;place-items:center}.leadFieldError{margin:-10px 0 0;color:#aa2637;font-size:11px;font-weight:650;text-align:center}
 .card{content-visibility:auto;contain-intrinsic-size:520px}.cardTitleButton{width:100%;border:0;padding:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}.cardTitleButton:focus-visible{outline:3px solid var(--qo-cyan);outline-offset:4px}.leadModal label{display:block}.leadModal form>small{margin-top:-12px;color:#aa2637;font-size:11px;font-weight:650;letter-spacing:0}.leadHoneypot{position:absolute!important;left:-10000px!important;top:auto!important;width:1px!important;height:1px!important;margin:0!important;padding:0!important;overflow:hidden!important}
 .leadModal form{gap:7px}.leadModal label:not(:first-of-type){margin-top:11px}.leadSubmit{margin-top:9px}
+
+/* Refined campaign WhatsApp shortcut */
+.whatsappFloat{right:max(22px,calc(env(safe-area-inset-right) + 16px));bottom:max(22px,calc(env(safe-area-inset-bottom) + 16px));width:auto;min-width:62px;height:62px;padding:0 20px;border:1px solid rgba(255,255,255,.68);border-radius:999px;display:flex;align-items:center;justify-content:center;gap:0;box-shadow:0 12px 30px rgba(5,34,101,.24),0 3px 10px rgba(5,7,42,.2);animation:whatsapp-float-in .45s .35s ease-out both;transition:transform .2s ease,box-shadow .2s ease,gap .25s ease}
+.whatsappFloat .whatsappIcon{flex:0 0 auto;width:30px;height:30px}
+.whatsappFloat span{max-width:0;overflow:hidden;opacity:0;color:#fff;font-size:13px;font-weight:800;line-height:1;white-space:nowrap;transition:max-width .25s ease,opacity .18s ease}
+.whatsappFloat:hover{gap:10px;transform:translateY(-3px);box-shadow:0 16px 36px rgba(5,34,101,.3),0 4px 12px rgba(5,7,42,.22)}
+.whatsappFloat:hover span{max-width:150px;opacity:1}
+.whatsappFloat:focus-visible{outline:3px solid #fff;outline-offset:4px;box-shadow:0 0 0 7px rgba(35,173,223,.45),0 14px 32px rgba(5,34,101,.28)}
+@keyframes whatsapp-float-in{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+@media(max-width:767px){.whatsappFloat{right:max(14px,calc(env(safe-area-inset-right) + 10px));bottom:max(14px,calc(env(safe-area-inset-bottom) + 10px));width:56px;min-width:56px;height:56px;padding:0}.whatsappFloat span{display:none}.whatsappFloat:hover{gap:0}.whatsappFloat .whatsappIcon{width:28px;height:28px}}
+@media(prefers-reduced-motion:reduce){.whatsappFloat{animation:none;transition:none}.whatsappFloat span{transition:none}}
+
+/* Focused catalog and gallery corrections */
+.campaignGeneralContent .campaignDeadline{color:#fff;font-weight:850;text-decoration:underline;text-decoration-color:var(--qo-cyan);text-decoration-thickness:2px;text-underline-offset:4px}
+.propertySection.catalog{padding-top:0}
+.campaignLoad{min-width:280px;min-height:52px;margin:48px auto 0;padding:0 28px;border:1px solid #052265;border-bottom:1px solid #052265;background:var(--qo-cyan);color:var(--qo-night);display:flex;align-items:center;justify-content:center;gap:12px;font-size:13px;font-weight:850;letter-spacing:.01em;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);box-shadow:0 10px 24px rgba(5,34,101,.18);cursor:pointer;transition:transform .18s ease,background-color .18s ease,box-shadow .18s ease}
+.campaignLoad:hover:not(:disabled){background:#57d4ff;transform:translateY(-2px);box-shadow:0 14px 30px rgba(5,34,101,.24)}
+.campaignLoad:focus-visible{outline:3px solid var(--qo-royal);outline-offset:4px}
+.campaignLoad:disabled{cursor:wait;opacity:.82}
+.campaignLoad svg{width:18px;height:18px}
+.loadSpinner{width:18px;height:18px;border:2px solid rgba(5,7,42,.28);border-top-color:var(--qo-night);border-radius:50%;animation:load-more-spin .7s linear infinite}
+@keyframes load-more-spin{to{transform:rotate(360deg)}}
+.modalGallery .galleryBackdrop{opacity:.62;filter:blur(22px) brightness(.38);transform:scale(1.08)}
+.modalGallery .galleryMain{width:100%!important;height:100%!important;max-width:100%;max-height:100%;object-fit:contain!important}
+@media(max-width:767px){.campaignGeneralContent>p{min-width:0;max-width:34rem;font-size:16px;line-height:1.6}.propertyCatalogSurface{padding-top:28px}.campaignLoad{width:calc(100% - 8px);min-width:0;min-height:50px;margin-top:38px;padding-inline:20px}.mobileGalleryStage>img{width:100%!important;height:100%!important;max-width:100%;max-height:100%;object-fit:contain!important}}
+@media(prefers-reduced-motion:reduce){.campaignLoad{transition:none}.loadSpinner{animation-duration:1.4s}}

@@ -35,6 +35,12 @@ const approvedImageUrl = (value: string) => {
   } catch { return false; }
 };
 
+const originalGoogleImageUrl = (value: string) => {
+  const url = new URL(value);
+  url.pathname = `${url.pathname.replace(/=s\d+$/i, "")}=s0`;
+  return url.toString();
+};
+
 const rawPropertySchema = z.object({
   code: z.union([z.string(), z.number()]).transform(String),
   property_type: z.string().nullish(),
@@ -144,10 +150,12 @@ export async function sanitizeImobziProperty(
     photos.findIndex((candidate) => candidate.url === photo.url) === index);
   const photoMetadata = await Promise.all(uniquePublicPhotos.map(async (photo, index) => ({
     ...photo,
-    ...(index < 3 ? await inspectPublicImage(photo.url) : { width: null, height: null }),
+    thumbnailUrl: photo.url,
+    url: originalGoogleImageUrl(photo.url),
+    ...(index < 3 ? await inspectPublicImage(originalGoogleImageUrl(photo.url)) : { width: null, height: null }),
   })));
   const cover = property.cover_photo?.url && approvedImageUrl(property.cover_photo.url)
-    ? { url: property.cover_photo.url, position: 0, ...await inspectPublicImage(property.cover_photo.url) }
+    ? { url: originalGoogleImageUrl(property.cover_photo.url), thumbnailUrl: property.cover_photo.url, position: 0, ...await inspectPublicImage(originalGoogleImageUrl(property.cover_photo.url)) }
     : null;
   const bestPublicPhotoWidth = Math.max(0, ...photoMetadata.map((photo) => photo.width || 0));
   const useCoverFallback = Boolean(cover && !photoMetadata.some((photo) => photo.url === cover.url)
@@ -202,7 +210,7 @@ export async function sanitizeImobziProperty(
     images: orderedPhotos.map((photo, index) => ({
       originalUrl: photo.url,
       displayUrl: photo.url,
-      thumbnailUrl: photo.url,
+      thumbnailUrl: photo.thumbnailUrl,
       width: photo.width,
       height: photo.height,
       position: photo.position ?? index,

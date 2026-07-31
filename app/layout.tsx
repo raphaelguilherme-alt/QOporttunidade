@@ -5,12 +5,12 @@ const siteUrl = "https://oportunidade.qvista.com.br";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Q Oportunidade — QVista",
-  description: "Imóveis selecionados no Guarujá com condições especiais e atendimento QVista.",
+  title: "Q Oportunidade — +70 imóveis com até 40% de desconto",
+  description: "+70 imóveis com até 40% de desconto nas melhores praias do Guarujá.",
   alternates: { canonical: "/" },
   openGraph: {
-    title: "Q Oportunidade — QVista",
-    description: "Uma oportunidade real pode abrir uma nova porta.",
+    title: "Q Oportunidade — +70 imóveis com até 40% de desconto",
+    description: "+70 imóveis com até 40% de desconto nas melhores praias do Guarujá.",
     url: siteUrl,
     siteName: "Q Oportunidade",
     locale: "pt_BR",
@@ -19,8 +19,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Q Oportunidade — QVista",
-    description: "Imóveis selecionados no Guarujá com condições especiais.",
+    title: "Q Oportunidade — +70 imóveis com até 40% de desconto",
+    description: "+70 imóveis com até 40% de desconto nas melhores praias do Guarujá.",
     images: ["/images/hero-guaruja-desktop.webp"],
   },
 };

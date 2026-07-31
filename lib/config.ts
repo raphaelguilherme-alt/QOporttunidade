@@ -14,8 +14,8 @@ export const campaignConfig = {
 } as const;
 
 export const CAMPAIGN_HERO = {
-  propertyCountLabel: "76 imóveis",
-  maxDiscountLabel: "até 33% de desconto",
+  propertyCountLabel: "+70 imóveis",
+  maxDiscountLabel: "até 40% de desconto",
   locationLabel: "nas melhores praias do Guarujá",
   propertyCountConfirmed: true,
 } as const;
