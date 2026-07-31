@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PROMOTIONAL_INVENTORY } from "@/lib/promotional-inventory";
-import { getCampaignProperties, imobziApiBaseUrl } from "@/lib/imobzi.server";
+import { imobziApiBaseUrl } from "@/lib/imobzi.server";
+import { getCatalogSnapshot } from "@/lib/catalog-snapshot.server";
 import { buildImobziLead, leadRequestSchema } from "@/lib/lead";
 import {
   anonymousKey, clientIp, enforceRateLimit, releaseIdempotency,
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
       return response(429, { ok: false, error: "request_rejected" }, Math.max(phoneLimit.retryAfter, pairLimit.retryAfter));
     }
 
-    const catalog = await getCampaignProperties();
+    const catalog = await getCatalogSnapshot();
     const property = catalog.properties.find(item => item.code === propertyCode);
     if (!property || property.campaignStatus !== "available") {
       log(409, propertyCode, "unavailable"); return response(409, { ok: false, error: "request_rejected" });

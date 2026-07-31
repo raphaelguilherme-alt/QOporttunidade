@@ -283,6 +283,7 @@ const loadCampaignProperties = async () => {
     while (cursor < entries.length) {
       const index = cursor++;
       const config = entries[index];
+      const requestStartedAt = performance.now();
       try {
         settled[index] = {
           status: "fulfilled",
@@ -291,8 +292,21 @@ const loadCampaignProperties = async () => {
             config,
           ),
         };
+        console.info(JSON.stringify({
+          event: "imobzi_property_sync",
+          code: config.code,
+          durationMs: Math.round(performance.now() - requestStartedAt),
+          status: "success",
+        }));
       } catch (reason) {
         settled[index] = { status: "rejected", reason };
+        console.warn(JSON.stringify({
+          event: "imobzi_property_sync",
+          code: config.code,
+          durationMs: Math.round(performance.now() - requestStartedAt),
+          status: "failed",
+          kind: reason instanceof ImobziError ? reason.kind : "validation",
+        }));
       }
     }
   };
@@ -331,6 +345,8 @@ const loadCampaignProperties = async () => {
     },
   };
 };
+
+export const syncCampaignProperties = loadCampaignProperties;
 
 export const getCampaignProperties = unstable_cache(
   loadCampaignProperties,

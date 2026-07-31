@@ -1,279 +1,45 @@
-"use client";
+import HomeClient from "./page-client";
+import { getCatalogSnapshot, toCatalogSummaries } from "@/lib/catalog-snapshot.server";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import Image from "next/image";
-import Script from "next/script";
-import { ArrowDown, ArrowRight, BedDouble, Building2, Check, ChevronDown, ChevronLeft, ChevronRight, Heart, Instagram, KeyRound, MapPin, Maximize2, Menu, MessageCircle, Minimize2, RotateCcw, Ruler, Search, SlidersHorizontal, Tag, X, ZoomIn, ZoomOut } from "lucide-react";
-import type { PublicCampaignProperty } from "@/lib/public-property";
-import { CAMPAIGN_HERO, campaignConfig } from "@/lib/config";
+export const revalidate = 900;
 
-declare global {
- interface Window { turnstile?: {render:(element:HTMLElement,options:Record<string,unknown>)=>string;reset:(id:string)=>void;remove:(id:string)=>void} }
+export default async function Home() {
+  const snapshot = await getCatalogSnapshot();
+  const initialItems = toCatalogSummaries(snapshot.properties);
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://oportunidade.qvista.com.br/#organization",
+        name: "QVista Inteligência Imobiliária",
+        url: "https://www.qvista.com.br/",
+        logo: "https://oportunidade.qvista.com.br/images/logo-dark.png",
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://oportunidade.qvista.com.br/#website",
+        url: "https://oportunidade.qvista.com.br/",
+        name: "Q Oportunidade",
+        publisher: { "@id": "https://oportunidade.qvista.com.br/#organization" },
+        inLanguage: "pt-BR",
+      },
+      {
+        "@type": "ItemList",
+        name: "Imóveis da campanha Q Oportunidade",
+        numberOfItems: initialItems.length,
+        itemListElement: initialItems.map((property, index) => ({
+          "@type": "ListItem",
+          position: index + 1,
+          url: `https://oportunidade.qvista.com.br/#imovel-${encodeURIComponent(property.code)}`,
+          name: `${property.propertyType} em ${property.neighborhood}`,
+        })),
+      },
+    ],
+  };
+
+  return <>
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />
+    <HomeClient initialItems={initialItems} />
+  </>;
 }
-
-const money = new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0});
-const wa = (msg:string) => `https://wa.me/${campaignConfig.whatsappNumber}?text=${encodeURIComponent(msg)}`;
-type PriceRange="all"|"upto300"|"301to400"|"above401";
-type Filters={beach:string;priceRange:PriceRange;bedrooms:number};
-const emptyFilters:Filters={beach:"",priceRange:"all",bedrooms:0};
-const activeFilterCount=(f:Filters)=>Number(!!f.beach)+Number(f.priceRange!=="all")+Number(f.bedrooms>0);
-const availableFirst=(items:PublicCampaignProperty[])=>[...items].sort((a,b)=>a.campaignStatus===b.campaignStatus?0:a.campaignStatus==="available"?-1:1);
-const displayPrice=(p:PublicCampaignProperty)=>p.effectivePrice ?? p.fairPrice ?? p.originalPrice;
-
-function track(event:string, data={}) { if(typeof window!=="undefined") window.dispatchEvent(new CustomEvent("qvista:analytics",{detail:{event,...data}})); }
-
-const LeadContext=createContext<(property:PublicCampaignProperty)=>void>(()=>{});
-const useLeadForm=()=>useContext(LeadContext);
-const maskPhone=(value:string)=>{const digits=value.replace(/\D/g,"").slice(0,11);if(digits.length<=2)return digits;if(digits.length<=7)return`(${digits.slice(0,2)}) ${digits.slice(2)}`;return`(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}`};
-let documentLockCount=0;
-let documentLockSnapshot:{html:string;body:string;scrollY:number}|null=null;
-let documentUnlockFrame:number|null=null;
-let pendingModalScrollY:number|null=null;
-const rememberModalScroll=()=>{pendingModalScrollY=window.scrollY};
-function useDocumentScrollLock(){
- useEffect(()=>{const html=document.documentElement,body=document.body;if(documentUnlockFrame!==null){cancelAnimationFrame(documentUnlockFrame);documentUnlockFrame=null}if(documentLockCount===0&&!documentLockSnapshot){documentLockSnapshot={html:html.style.cssText,body:body.style.cssText,scrollY:pendingModalScrollY??window.scrollY};pendingModalScrollY=null;html.style.overflow="hidden";html.style.overscrollBehavior="none";body.style.position="fixed";body.style.top=`-${documentLockSnapshot.scrollY}px`;body.style.width="100%";body.style.overflow="hidden"}documentLockCount++;return()=>{documentLockCount=Math.max(0,documentLockCount-1);if(documentLockCount===0&&documentLockSnapshot){documentUnlockFrame=requestAnimationFrame(()=>{documentUnlockFrame=null;if(documentLockCount!==0||!documentLockSnapshot)return;const snapshot=documentLockSnapshot;documentLockSnapshot=null;html.style.cssText=snapshot.html;body.style.cssText=snapshot.body;window.scrollTo(0,snapshot.scrollY)})}}},[]);
-}
-
-function LeadModal({property,onClose}:{property:PublicCampaignProperty;onClose:()=>void}){
- const [name,setName]=useState(""),[phone,setPhone]=useState(""),[errors,setErrors]=useState<{name?:string;phone?:string;antibot?:string}>({}),[status,setStatus]=useState<"idle"|"sending"|"success"|"error">("idle"),[website,setWebsite]=useState(""),[tokenAntibot,setTokenAntibot]=useState("");
- const dialog=useRef<HTMLDivElement>(null),turnstileRoot=useRef<HTMLDivElement>(null),turnstileId=useRef<string|null>(null),formStartedAt=useRef(0),mobile=useMobileViewport(),turnstileSiteKey=process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY||"";
- useDocumentScrollLock();
- useEffect(()=>{formStartedAt.current=Date.now()},[]);
- const renderTurnstile=()=>{if(!turnstileSiteKey||!turnstileRoot.current||!window.turnstile||turnstileId.current)return;turnstileId.current=window.turnstile.render(turnstileRoot.current,{sitekey:turnstileSiteKey,action:"property_lead",callback:(token:string)=>{setTokenAntibot(token);setErrors(current=>({...current,antibot:undefined}))},"expired-callback":()=>setTokenAntibot(""),"error-callback":()=>setTokenAntibot("")})};
- useEffect(()=>{if(!turnstileSiteKey)return;const timer=window.setInterval(()=>{if(window.turnstile){window.clearInterval(timer);renderTurnstile()}},100);return()=>window.clearInterval(timer)},[turnstileSiteKey]);
- useEffect(()=>()=>{if(turnstileId.current&&window.turnstile)window.turnstile.remove(turnstileId.current)},[]);
- const requestClose=()=>{if(status==="sending")return;if(mobile&&history.state?.qvistaLead)history.back();else onClose()};
- useEffect(()=>{if(mobile&&!history.state?.qvistaLead)history.pushState({...history.state,qvistaLead:true},"");const pop=(event:PopStateEvent)=>{if(!event.state?.qvistaLead)onClose()},keys=(event:KeyboardEvent)=>{if(event.key==="Escape"&&!mobile)requestClose()};addEventListener("popstate",pop);addEventListener("keydown",keys);dialog.current?.querySelector<HTMLInputElement>("input")?.focus();return()=>{removeEventListener("popstate",pop);removeEventListener("keydown",keys)}},[]);
- const submit=async(event:React.FormEvent)=>{event.preventDefault();if(status==="sending")return;const cleanName=name.trim(),digits=phone.replace(/\D/g,""),next:{name?:string;phone?:string;antibot?:string}={};if(cleanName.length<2||!/\p{L}/u.test(cleanName))next.name="Informe seu nome com pelo menos 2 caracteres.";if(!/^[1-9]{2}9\d{8}$/.test(digits))next.phone="Informe um celular com DDD.";if(turnstileSiteKey&&!tokenAntibot)next.antibot="Confirme a verificação de segurança.";setErrors(next);if(Object.keys(next).length)return;setStatus("sending");try{const response=await fetch("/api/leads/imobzi",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:cleanName,phone:digits,propertyCode:property.code,website,tokenAntibot,formStartedAt:formStartedAt.current})});if(!response.ok)throw new Error();setStatus("success");track("property_lead_sent",{code:property.code})}catch{setStatus("error");setTokenAntibot("");if(turnstileId.current&&window.turnstile)window.turnstile.reset(turnstileId.current)}};
- return createPortal(<div className="leadBackdrop" onMouseDown={event=>{if(event.target===event.currentTarget)requestClose()}}><div className="leadModal" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="lead-title"><button className="leadClose" type="button" onClick={requestClose} aria-label="Fechar formulário" disabled={status==="sending"}><X/></button>{status==="success"?<div className="leadSuccess"><Check/><h2 id="lead-title">Contato enviado</h2><p>A equipe QVista recebeu seu interesse no imóvel cód. {property.code} e falará com você em breve.</p><button className="btn primary" type="button" onClick={requestClose}>Continuar vendo imóveis</button></div>:<><header><span>Q OPORTUNIDADE</span><h2 id="lead-title">Tenho interesse neste imóvel</h2><p>Imóvel cód. {property.code}</p></header><form onSubmit={submit} noValidate><label>Nome<input name="name" autoComplete="name" value={name} onChange={event=>setName(event.target.value)} aria-invalid={!!errors.name} aria-describedby={errors.name?"lead-name-error":undefined}/>{errors.name&&<small id="lead-name-error">{errors.name}</small>}</label><label>Telefone<input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="(13) 99999-9999" value={phone} onChange={event=>setPhone(maskPhone(event.target.value))} aria-invalid={!!errors.phone} aria-describedby={errors.phone?"lead-phone-error":undefined}/>{errors.phone&&<small id="lead-phone-error">{errors.phone}</small>}</label><label className="leadHoneypot" aria-hidden="true">Não preencha<input name="website" tabIndex={-1} autoComplete="off" value={website} onChange={event=>setWebsite(event.target.value)}/></label>{turnstileSiteKey&&<><Script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" strategy="afterInteractive" onLoad={renderTurnstile}/><div className="leadTurnstile" ref={turnstileRoot}/>{errors.antibot&&<p className="leadFieldError">{errors.antibot}</p>}</>}{status==="error"&&<p className="leadError" role="alert">Não conseguimos enviar seu contato agora. Tente novamente em instantes.</p>}<button className="btn primary leadSubmit" type="submit" disabled={status==="sending"}>{status==="sending"?"Enviando seu contato...":"Quero receber atendimento"}<ArrowRight/></button><p className="leadConsent">Ao enviar, você autoriza o contato da equipe QVista sobre este imóvel.</p></form></>}</div></div>,document.body);
-}
-
-function Header({dark=false}:{dark?:boolean}){
-  const [scrolled,setScrolled]=useState(false),[open,setOpen]=useState(false);
-  useEffect(()=>{const f=()=>{if(documentLockCount===0)setScrolled(scrollY>40)}; f(); addEventListener("scroll",f); return()=>removeEventListener("scroll",f)},[]);
-  return <header className={scrolled?"header scrolled":"header"}>
-    <a href="/" className="logo"><img src={scrolled?"/images/logo-dark.png":"/images/logo-white.png"} alt="QVista Inteligência Imobiliária"/></a>
-    <nav aria-label="Principal"><a href="#oportunidades">Oportunidades</a><a href="#praias">Praias</a><a href="#como-funciona">Como funciona</a><a href="#contato">Contato</a></nav>
-    <a className="headerCta" href={wa("Olá! Acessei a campanha Q Oportunidade e gostaria de conhecer os imóveis disponíveis.")} target="_blank" rel="noopener noreferrer">Contatar <ArrowRight/></a>
-    <button className="menuBtn" onClick={()=>setOpen(true)} aria-label="Abrir menu"><Menu/></button>
-    {open&&<div className="drawer"><button onClick={()=>setOpen(false)} aria-label="Fechar menu"><X/></button><img src="/images/logo-dark.png" alt="QVista"/><a onClick={()=>setOpen(false)} href="#oportunidades">Oportunidades</a><a onClick={()=>setOpen(false)} href="#praias">Praias</a><a onClick={()=>setOpen(false)} href="#como-funciona">Como funciona</a><a onClick={()=>setOpen(false)} href="#contato">Contato</a><a className="btn primary" href={wa("Olá! Acessei a campanha Q Oportunidade e gostaria de conhecer os imóveis disponíveis.")}>Contatar</a></div>}
-  </header>
-}
-
-function PromoBar({maxDiscount}:{maxDiscount:number}){
- return <div className="promoBar"><span>Q OPORTUNIDADE <i/> IMÓVEIS COM ATÉ {maxDiscount}% DE DESCONTO</span><a href="#oportunidades">Ver oportunidades <ArrowRight/></a></div>
-}
-
-function Hero({items}:{items:PublicCampaignProperty[]}){
- const maxDiscount=Math.max(0,...items.filter(p=>p.campaignStatus==="available").map(p=>p.discountPercentage));
- return <><div className="siteHeaderStack"><PromoBar maxDiscount={maxDiscount}/><Header/></div><section className="campaignHero campaignHeroGeneral">
-  <picture className="campaignLandscape" aria-hidden="true">
-   <source media="(max-width: 600px)" srcSet="/images/hero-guaruja-mobile.webp"/>
-   <source media="(max-width: 1100px)" srcSet="/images/hero-guaruja-tablet.webp"/>
-   <img src="/images/hero-guaruja-desktop.webp" alt="" width="1920" height="1080" fetchPriority="high"/>
-  </picture>
-  <div className="campaignGeneralContent">
-   <img className="heroCampaignLogo" src="/images/logo-q-oportunidade.png" alt="Q Oportunidade"/>
-   <p className="campaignEyebrow">FEIRÃO Q OPORTUNIDADE</p>
-   <h1><span>{CAMPAIGN_HERO.propertyCountLabel}</span><strong>com {CAMPAIGN_HERO.maxDiscountLabel}</strong><em>{CAMPAIGN_HERO.locationLabel}.</em></h1>
-   <p>Apartamentos e casas com condições especiais<br/>selecionadas pela QVista.</p>
-   <div className="campaignActions"><a className="btn primary" href="#oportunidades">Ver oportunidades <ArrowRight/></a><a href={wa("Olá! Acessei a campanha Q Oportunidade e gostaria de conhecer os imóveis disponíveis.")} target="_blank" rel="noopener noreferrer">Falar com a QVista</a></div>
-  </div>
- </section></>;
-}
-
-type FilterOption={value:string;label:string;shortLabel?:string;meta?:string};
-function CampaignSelect({label,value,options,icon:Icon,onChange}:{label:string;value:string;options:FilterOption[];icon:typeof Search;onChange:(value:string)=>void}){
- const [open,setOpen]=useState(false);
- const root=useRef<HTMLDivElement>(null),menu=useRef<HTMLDivElement>(null);
- const selected=options.find(option=>option.value===value)??options[0];
- useEffect(()=>{if(!open)return;const outside=(event:PointerEvent)=>{if(!root.current?.contains(event.target as Node))setOpen(false)};addEventListener("pointerdown",outside);menu.current?.querySelector<HTMLElement>("[aria-selected='true']")?.focus();return()=>removeEventListener("pointerdown",outside)},[open]);
- const keyDown=(event:React.KeyboardEvent)=>{if(!open&&(event.key==="ArrowDown"||event.key==="Enter"||event.key===" ")){event.preventDefault();setOpen(true);return}if(open&&event.key==="Escape"){setOpen(false);root.current?.querySelector<HTMLElement>(".campaignSelectTrigger")?.focus();return}if(open&&(event.key==="ArrowDown"||event.key==="ArrowUp")){event.preventDefault();const buttons=[...menu.current?.querySelectorAll<HTMLButtonElement>("[role='option']")||[]];const index=Math.max(0,buttons.indexOf(document.activeElement as HTMLButtonElement));buttons[(index+(event.key==="ArrowDown"?1:-1)+buttons.length)%buttons.length]?.focus()}};
- return <div className={`campaignSelect ${open?"open":""}`} ref={root} onKeyDown={keyDown}><button type="button" className="campaignSelectTrigger" data-state={open?"open":"closed"} aria-label={`${label}: ${selected.label}`} aria-haspopup="listbox" aria-expanded={open} onClick={()=>setOpen(current=>!current)}><Icon/><span><small>{label}</small><strong>{selected.shortLabel??selected.label}</strong></span><ChevronDown/></button>{open&&<div className="campaignSelectPopover" role="listbox" ref={menu} aria-label={label}>{options.map(option=><button type="button" className="filterOption" data-state={option.value===value?"checked":"unchecked"} role="option" aria-selected={option.value===value} key={option.value} onClick={()=>{onChange(option.value);setOpen(false)}}><span className="filterOptionCopy"><span className="filterOptionLabel">{option.label}</span>{option.meta&&<span className="filterOptionCount">{option.meta}</span>}</span><Check className="filterOptionCheck"/></button>)}</div>}</div>
-}
-
-function QuickSearch({value,onChange,onApply,items}:{value:Filters;onChange:(f:Filters)=>void;onApply:()=>void;items:PublicCampaignProperty[]}){
- const [sheet,setSheet]=useState(false);
- const availableUnique=useMemo(()=>Array.from(new Map(items.filter(p=>p.campaignStatus==="available").map(p=>[p.code,p])).values()),[items]);
- const beaches=useMemo(()=>Array.from(new Set(availableUnique.map(p=>p.beach).filter((beach):beach is string=>Boolean(beach)))).sort(),[availableUnique]);
- const beachCounts=useMemo(()=>Object.fromEntries(beaches.map(beach=>[beach,availableUnique.filter(p=>p.beach===beach).length])),[beaches,availableUnique]);
- const matches=(p:PublicCampaignProperty)=>{const price=displayPrice(p);return p.campaignStatus==="available"&&(!value.beach||p.beach===value.beach)&&(value.bedrooms===0||(value.bedrooms===4?(p.bedrooms??0)>=4:p.bedrooms===value.bedrooms))&&(value.priceRange==="all"||price!==null&&(value.priceRange==="upto300"?price<=300000:value.priceRange==="301to400"?price>300000&&price<=400000:price>400000))};
- const results=items.filter(matches).length;
- useEffect(()=>{if(!sheet)return;const previous=document.body.style.overflow;document.body.style.overflow="hidden";const esc=(e:KeyboardEvent)=>e.key==="Escape"&&setSheet(false);addEventListener("keydown",esc);return()=>{document.body.style.overflow=previous;removeEventListener("keydown",esc)}},[sheet]);
- const priceCount=(range:PriceRange)=>availableUnique.filter(property=>{const price=displayPrice(property);return range==="all"||price!==null&&(range==="upto300"?price<=300000:range==="301to400"?price>300000&&price<=400000:price>400000)}).length;
- const bedroomCount=(bedrooms:number)=>availableUnique.filter(property=>bedrooms===0||(bedrooms===4?(property.bedrooms??0)>=4:property.bedrooms===bedrooms)).length;
- const priceOptions=[{value:"all",label:"Todos os preços",shortLabel:"Todos",meta:`${priceCount("all")} imóveis`},{value:"upto300",label:"Até R$ 300 mil",meta:`${priceCount("upto300")} imóveis`},{value:"301to400",label:"De R$ 301 mil a R$ 400 mil",meta:`${priceCount("301to400")} imóveis`},{value:"above401",label:"Acima de R$ 401 mil",meta:`${priceCount("above401")} imóveis`}];
- const bedroomOptions=[{value:"0",label:"Qualquer quantidade de quartos",shortLabel:"Qualquer",meta:`${bedroomCount(0)} imóveis`},{value:"1",label:"1 quarto",meta:`${bedroomCount(1)} imóveis`},{value:"2",label:"2 quartos",meta:`${bedroomCount(2)} imóveis`},{value:"3",label:"3 quartos",meta:`${bedroomCount(3)} imóveis`},{value:"4",label:"4 quartos ou mais",meta:`${bedroomCount(4)} imóveis`}];
- const beachOptions=[{value:"",label:"Todas as praias",meta:`${availableUnique.length} imóveis`},...beaches.map(beach=>({value:beach,label:beach,meta:`${beachCounts[beach]} imóveis`}))];
- const fields=<div className="simpleFilterFields">
-  <CampaignSelect label="Preço" value={value.priceRange} options={priceOptions} icon={Tag} onChange={priceRange=>onChange({...value,priceRange:priceRange as PriceRange})}/>
-  <CampaignSelect label="Quartos" value={String(value.bedrooms)} options={bedroomOptions} icon={BedDouble} onChange={bedrooms=>onChange({...value,bedrooms:Number(bedrooms)})}/>
-  <CampaignSelect label="Praia" value={value.beach} options={beachOptions} icon={MapPin} onChange={beach=>onChange({...value,beach})}/>
- </div>;
- const apply=()=>{setSheet(false);onApply()};
- const chips=[value.priceRange!=="all"&&{key:"price",label:priceOptions.find(x=>x.value===value.priceRange)!.label,clear:()=>onChange({...value,priceRange:"all"})},value.bedrooms>0&&{key:"bedrooms",label:bedroomOptions.find(x=>x.value===String(value.bedrooms))!.label,clear:()=>onChange({...value,bedrooms:0})},value.beach&&{key:"beach",label:value.beach,clear:()=>onChange({...value,beach:""})}].filter(Boolean) as {key:string;label:string;clear:()=>void}[];
- return <section className="quickWrap" aria-label="Busca de imóveis"><div className="quick desktopFilters">{fields}<button className="btn primary searchButton filterSearchButton" onClick={apply}><Search/><span>BUSCAR OPORTUNIDADES</span><b className="filterResultCount">{results}</b></button></div>{chips.length>0&&<div className="activeFilterChips">{chips.map(chip=><button key={chip.key} onClick={chip.clear}>{chip.label}<X/></button>)}<button className="clearFilters" onClick={()=>onChange(emptyFilters)}>Limpar filtros</button></div>}<div className="mobileFilterBar"><button onClick={()=>setSheet(true)}><SlidersHorizontal/>Filtrar imóveis {activeFilterCount(value)>0&&<b>{activeFilterCount(value)}</b>}</button><span>{results} resultados</span></div>{sheet&&<div className="sheetBackdrop" onMouseDown={()=>setSheet(false)}><div className="filterSheet" role="dialog" aria-modal="true" aria-label="Filtros de imóveis" onMouseDown={e=>e.stopPropagation()}><div className="sheetHandle"/><header><strong>Encontre sua oportunidade</strong><button onClick={()=>setSheet(false)} aria-label="Fechar filtros"><X/></button></header><div className="sheetContent">{fields}</div><footer><button onClick={()=>onChange(emptyFilters)}>Limpar filtros</button><button className="btn primary" onClick={apply}>Buscar oportunidades ({results})</button></footer></div></div>}</section>
-}
-
-function FeaturedDeal({items}:{items:PublicCampaignProperty[]}){
- const [details,setDetails]=useState(false);
- const property=useMemo(()=>items.filter(p=>p.campaignStatus==="available"&&p.originalPrice!==null&&displayPrice(p)!==null&&p.originalPrice!>displayPrice(p)!).sort((a,b)=>b.discountPercentage-a.discountPercentage||(b.savings??0)-(a.savings??0))[0],[items]);
- if(!property)return null;
- const image=property.images[0];
- return <section className="featuredDeal" aria-label="Maior desconto do Feirão"><div className="featuredDealImage">{image&&<Image src={image.thumbnailUrl} alt={image.alt} fill sizes="(max-width: 767px) 100vw, 42vw"/>}<span>MAIOR DESCONTO DO FEIRÃO</span></div><div className="featuredDealContent"><p className="eyebrow">CÓD. {property.code} · {property.neighborhood}</p><h2><strong>{property.discountPercentage}%</strong> de desconto</h2><div><span>DE <s>{money.format(property.originalPrice!)}</s></span><b>POR {money.format(property.fairPrice!)}</b><em>VOCÊ ECONOMIZA {money.format(property.savings!)}</em></div><button className="btn primary" onPointerDown={rememberModalScroll} onClick={()=>setDetails(true)}>Ver esta oportunidade <ArrowRight/></button></div>{details&&<PropertyModal property={property} onClose={()=>setDetails(false)}/>}</section>;
-}
-
-type GalleryControlVariant="icon"|"iconWithLabel"|"navigation"|"primary"|"fullscreenExit";
-function GalleryControlButton({label,variant="icon",children,...props}:React.ButtonHTMLAttributes<HTMLButtonElement>&{label:string;variant?:GalleryControlVariant}){
- return <button type="button" className={`gallery-control gallery-control--${variant}`} aria-label={label} title={label} {...props}>{children}</button>
-}
-
-function useMobileViewport(){
- const query="(max-width: 767px), (max-height: 500px) and (orientation: landscape)";
- const [mobile,setMobile]=useState(()=>typeof window!=="undefined"&&matchMedia(query).matches);
- useEffect(()=>{const media=matchMedia(query);const update=()=>setMobile(media.matches);update();media.addEventListener("change",update);return()=>media.removeEventListener("change",update)},[]);
- return mobile;
-}
-
-function MobileGallery({property:p,onClose}:{property:PublicCampaignProperty;onClose:()=>void}){
- const [index,setIndex]=useState(0),[scale,setScale]=useState(1),[x,setX]=useState(0),[y,setY]=useState(0),[loaded,setLoaded]=useState(false);
- const railRef=useRef<HTMLDivElement>(null),dialogRef=useRef<HTMLDivElement>(null),gesture=useRef<{kind:"swipe"|"pan"|"pinch";startX:number;startY:number;baseX:number;baseY:number;distance:number;baseScale:number}|null>(null);
- const active=p.images[index],reset=()=>{setScale(1);setX(0);setY(0)},select=(next:number)=>{setLoaded(false);setIndex((next+p.images.length)%p.images.length);reset()};
- useDocumentScrollLock();
- const requestClose=()=>history.state?.qvistaGallery?history.back():onClose();
- useEffect(()=>{if(!history.state?.qvistaGallery)history.pushState({...history.state,qvistaGallery:true},"");const pop=(event:PopStateEvent)=>{if(!event.state?.qvistaGallery)onClose()};addEventListener("popstate",pop);dialogRef.current?.focus();return()=>removeEventListener("popstate",pop)},[]);
- useEffect(()=>{for(const i of [(index-1+p.images.length)%p.images.length,(index+1)%p.images.length]){const image=new window.Image();image.src=p.images[i].displayUrl}},[index,p.images]);
- useEffect(()=>{const rail=railRef.current,thumb=rail?.querySelector<HTMLElement>("[aria-current='true']");if(!rail||!thumb)return;rail.scrollTo({left:Math.max(0,thumb.offsetLeft-rail.clientWidth/2+thumb.clientWidth/2),behavior:"smooth"})},[index]);
- useEffect(()=>{const keys=(event:KeyboardEvent)=>{if(event.key==="Escape")requestClose();if(event.key==="ArrowLeft")select(index-1);if(event.key==="ArrowRight")select(index+1);if(event.key==="Tab"){const controls=[...dialogRef.current?.querySelectorAll<HTMLElement>("button,[tabindex]:not([tabindex='-1'])")||[]],first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus()}}};addEventListener("keydown",keys);return()=>removeEventListener("keydown",keys)},[index]);
- const distance=(touches:React.TouchList)=>Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY);
- const touchStart=(event:React.TouchEvent)=>{if(event.touches.length===2){gesture.current={kind:"pinch",startX:0,startY:0,baseX:x,baseY:y,distance:distance(event.touches),baseScale:scale};return}const touch=event.touches[0];gesture.current={kind:scale>1?"pan":"swipe",startX:touch.clientX,startY:touch.clientY,baseX:x,baseY:y,distance:0,baseScale:scale}};
- const touchMove=(event:React.TouchEvent)=>{const current=gesture.current;if(!current)return;if(event.touches.length===2&&current.kind==="pinch"){event.preventDefault();setScale(Math.max(1,Math.min(4,current.baseScale*distance(event.touches)/current.distance)));return}if(event.touches.length!==1)return;const touch=event.touches[0],dx=touch.clientX-current.startX,dy=touch.clientY-current.startY;if(current.kind==="pan"){event.preventDefault();setX(current.baseX+dx);setY(current.baseY+dy)}};
- const touchEnd=(event:React.TouchEvent)=>{const current=gesture.current;gesture.current=null;if(!current||current.kind!=="swipe")return;const touch=event.changedTouches[0],dx=touch.clientX-current.startX,dy=touch.clientY-current.startY;if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.35)select(index+(dx<0?1:-1))};
- return createPortal(<div ref={dialogRef} className="mobileGallery" role="dialog" aria-modal="true" aria-label={`Galeria do imóvel ${p.code}`} tabIndex={-1}>
-  <header className="mobileGalleryTopbar"><button onClick={requestClose} aria-label="Fechar galeria"><X/></button><strong>Cód. {p.code}</strong><span aria-live="polite" aria-label={`Foto ${index+1} de ${p.images.length}`}>{index+1} / {p.images.length}</span></header>
-  <div className="mobileGalleryStage" onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd} onDoubleClick={()=>scale===1?setScale(2):reset()}>
-   {active&&<div className="mobileGalleryBackdrop" style={{backgroundImage:`url("${active.thumbnailUrl}")`}}/>}{!loaded&&<div className="mobileGallerySkeleton"/>}{active&&<Image key={active.displayUrl} className={loaded?"loaded":""} src={active.displayUrl} alt={active.alt} width={active.width||1600} height={active.height||1200} unoptimized draggable={false} onLoad={()=>setLoaded(true)} sizes="100dvw" style={{transform:`translate3d(${x}px,${y}px,0) scale(${scale})`}}/>}
-   {scale!==1&&<button className="mobileGalleryReset" onClick={reset} aria-label="Restaurar zoom"><RotateCcw/></button>}
-   {p.images.length>1&&<><button className="mobileGalleryArrow prev" onClick={()=>select(index-1)} aria-label="Foto anterior"><ChevronLeft/></button><button className="mobileGalleryArrow next" onClick={()=>select(index+1)} aria-label="Próxima foto"><ChevronRight/></button></>}
-  </div>
-  <footer className="mobileGalleryBottom"><div ref={railRef} className="mobileThumbnailRail">{p.images.map((photo,i)=><button className="mobileThumbnail" onClick={()=>select(i)} aria-label={`Ver foto ${i+1}`} aria-current={i===index} key={photo.thumbnailUrl}><Image src={photo.thumbnailUrl} alt="" fill quality={85} sizes="52px"/></button>)}</div><small>Deslize para navegar · toque duas vezes para ampliar</small></footer>
- </div>,document.body);
-}
-
-function MobilePropertyDetails({property:p,onClose}:{property:PublicCampaignProperty;onClose:()=>void}){
- const [gallery,setGallery]=useState(false),sold=p.campaignStatus==="sold",cover=p.images[0];
- const openLead=useLeadForm();
- useDocumentScrollLock();
- return createPortal(<div className="mobileProperty" role="dialog" aria-modal="true" aria-label={`Detalhes do imóvel ${p.code}`}>
-  <button className="mobilePropertyClose" onClick={onClose} aria-label="Fechar detalhes do imóvel"><X/></button>
-  <button className="mobilePropertyCover" onClick={()=>setGallery(true)} aria-label={`Ver todas as fotos do imóvel ${p.code}`}>{cover?<Image src={cover.displayUrl} alt={cover.alt} fill priority quality={92} sizes="100vw"/>:<span>Imagem em atualização</span>}<span>1 / {p.images.length}</span><b>Ver todas as fotos <ArrowRight/></b></button>
-  <main className="mobilePropertyContent"><p className="eyebrow">CÓD. {p.code} <i/> {p.locationLabel}</p><h2>{p.title}</h2><div className="specs">{p.bedrooms!==null&&<span><BedDouble/>{p.bedrooms} dorm.</span>}{p.suites!==null&&<span>{p.suites} suítes</span>}{p.parkingSpaces!==null&&<span>{p.parkingSpaces} vagas</span>}{p.usableArea!==null&&<span><Ruler/>{p.usableArea} m²</span>}</div>
-   {sold?<div className="modalPrice soldModalPrice"><small>IMÓVEL VENDIDO</small>{p.originalPrice!==null&&<><span>Último valor anunciado</span><strong>{money.format(p.originalPrice)}</strong></>}</div>:<div className="modalPrice fairModalPrice"><small>{p.discountPercentage>0?"CONDIÇÃO ESPECIAL DO FEIRÃO":"PREÇO DE CAMPANHA"}</small>{p.originalPrice!==null&&p.discountPercentage>0&&<span>De <s>{money.format(p.originalPrice)}</s></span>}<strong>{money.format(p.fairPrice!)}</strong>{p.discountPercentage>0&&<div className="modalFairBenefits"><em>{p.discountPercentage}% de desconto</em><b>Você economiza {money.format(p.savings!)}</b></div>}</div>}
-  </main>
-  <footer className="mobilePropertyCta">{sold?<span aria-disabled="true">Imóvel vendido</span>:<button type="button" onClick={()=>openLead(p)}>Quero conhecer este imóvel <ArrowRight/></button>}</footer>
-  {gallery&&<MobileGallery property={p} onClose={()=>setGallery(false)}/>}
- </div>,document.body);
-}
-
-function PropertyModal({property,onClose}:{property:PublicCampaignProperty;onClose:()=>void}){
- const mobile=useMobileViewport();
- const [mounted,setMounted]=useState(false),opener=useRef<HTMLElement|null>(null),restoreScrollY=useRef<number|null>(null);
- useEffect(()=>{opener.current=document.activeElement as HTMLElement;restoreScrollY.current=pendingModalScrollY??window.scrollY;setMounted(true);return()=>{const y=restoreScrollY.current;opener.current?.focus({preventScroll:true});if(y!==null)requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(0,y)))}},[]);
- useEffect(()=>{if(!mounted||!mobile)return;if(!history.state?.qvistaProperty)history.pushState({...history.state,qvistaProperty:true},"");const pop=(event:PopStateEvent)=>{if(!event.state?.qvistaProperty)onClose()},escape=(event:KeyboardEvent)=>{if(event.key==="Escape")history.back()};addEventListener("popstate",pop);addEventListener("keydown",escape);return()=>{removeEventListener("popstate",pop);removeEventListener("keydown",escape)}},[mounted,mobile]);
- if(!mounted)return null;
- return mobile?<MobilePropertyDetails property={property} onClose={()=>history.state?.qvistaProperty?history.back():onClose()}/>:createPortal(<DesktopPropertyModal property={property} onClose={onClose}/>,document.body);
-}
-
-function DesktopPropertyModal({property:p,onClose}:{property:PublicCampaignProperty;onClose:()=>void}){
- const [photoIndex,setPhotoIndex]=useState(0),[loadedUrl,setLoadedUrl]=useState(""),[switching,setSwitching]=useState(false),[scale,setScale]=useState(1),[translateX,setTranslateX]=useState(0),[translateY,setTranslateY]=useState(0),[isDragging,setIsDragging]=useState(false),[isFullscreen,setIsFullscreen]=useState(false),[cssFullscreen,setCssFullscreen]=useState(false);
- const openLead=useLeadForm();
- useDocumentScrollLock();
- const touchStart=useRef<number|null>(null),pinchStart=useRef<{distance:number;scale:number}|null>(null),dragStart=useRef<{x:number;y:number;tx:number;ty:number;moved:boolean}|null>(null),galleryRef=useRef<HTMLDivElement>(null),thumbnailRailRef=useRef<HTMLDivElement>(null),modalRef=useRef<HTMLDivElement>(null);
- const active=p.images[photoIndex],lowSource=Boolean(active?.width&&active.width<1200),loaded=active&&loadedUrl===active.displayUrl;
- const selectPhoto=async(index:number)=>{
-  if(switching||!p.images.length)return;
-  const next=(index+p.images.length)%p.images.length;
-  if(next===photoIndex)return;
-  setSwitching(true);
-  const image=new window.Image();image.decoding="async";image.src=p.images[next].displayUrl;
-  try{await image.decode()}catch{}
-  setLoadedUrl("");setPhotoIndex(next);resetZoom();setSwitching(false);
- };
- const resetZoom=()=>{setScale(1);setTranslateX(0);setTranslateY(0)};
- const maxScale=()=>Math.max(1,Math.min(4,(active?.width||galleryRef.current?.clientWidth||1)/(galleryRef.current?.clientWidth||1)));
- const clampTranslation=(x:number,y:number,nextScale=scale)=>{const gallery=galleryRef.current;if(!gallery)return{x:0,y:0};const maxX=gallery.clientWidth*(nextScale-1)/2,maxY=gallery.clientHeight*(nextScale-1)/2;return{x:Math.max(-maxX,Math.min(maxX,x)),y:Math.max(-maxY,Math.min(maxY,y))}};
- const setScaleAt=(requested:number,clientX?:number,clientY?:number)=>{const next=Math.max(1,Math.min(maxScale(),Math.round(requested*100)/100)),gallery=galleryRef.current;if(!gallery)return;const rect=gallery.getBoundingClientRect(),ratio=next/scale,x=clientX??rect.left+rect.width/2,y=clientY??rect.top+rect.height/2;const moved=clampTranslation((translateX-(x-(rect.left+rect.width/2)))*ratio+(x-(rect.left+rect.width/2)),(translateY-(y-(rect.top+rect.height/2)))*ratio+(y-(rect.top+rect.height/2)),next);setScale(next);setTranslateX(next===1?0:moved.x);setTranslateY(next===1?0:moved.y)};
- const exitFullscreen=async()=>{if(document.fullscreenElement)await document.exitFullscreen().catch(()=>{});setCssFullscreen(false);setIsFullscreen(false)};
- const enterFullscreen=async()=>{try{if(galleryRef.current?.requestFullscreen)await galleryRef.current.requestFullscreen();else{setCssFullscreen(true);setIsFullscreen(true)}}catch{setCssFullscreen(true);setIsFullscreen(true)}};
- useEffect(()=>{const change=()=>{const activeFullscreen=document.fullscreenElement===galleryRef.current;setIsFullscreen(activeFullscreen||cssFullscreen);if(!activeFullscreen)setCssFullscreen(false)};document.addEventListener("fullscreenchange",change);return()=>document.removeEventListener("fullscreenchange",change)},[cssFullscreen]);
- useEffect(()=>{const keys=(e:KeyboardEvent)=>{if(e.key==="Escape"){if(isFullscreen)void exitFullscreen();else onClose()}if(e.key==="ArrowLeft")void selectPhoto(photoIndex-1);if(e.key==="ArrowRight")void selectPhoto(photoIndex+1);if(e.key==="Tab"){const all=[...modalRef.current?.querySelectorAll<HTMLElement>("button,a,[tabindex]:not([tabindex='-1'])")||[]];if(!all.length)return;const first=all[0],last=all.at(-1)!;if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};addEventListener("keydown",keys);return()=>removeEventListener("keydown",keys)},[photoIndex,isFullscreen]);
- useEffect(()=>{const fit=()=>{const moved=clampTranslation(translateX,translateY,scale);setTranslateX(moved.x);setTranslateY(moved.y)};addEventListener("resize",fit);addEventListener("orientationchange",fit);document.addEventListener("fullscreenchange",fit);return()=>{removeEventListener("resize",fit);removeEventListener("orientationchange",fit);document.removeEventListener("fullscreenchange",fit)}},[scale,translateX,translateY]);
- useEffect(()=>{if(p.images.length<2)return;for(const index of [(photoIndex-1+p.images.length)%p.images.length,(photoIndex+1)%p.images.length]){const image=new window.Image();image.decoding="async";image.src=p.images[index].displayUrl}},[photoIndex,p.images]);
- useEffect(()=>{const rail=thumbnailRailRef.current,thumbnail=rail?.querySelector<HTMLElement>("button[aria-current='true']");if(!rail||!thumbnail)return;const targetLeft=thumbnail.offsetLeft-rail.clientWidth/2+thumbnail.clientWidth/2;rail.scrollTo({left:Math.max(0,targetLeft),behavior:"smooth"})},[photoIndex]);
- const markLoaded=async(e:React.SyntheticEvent<HTMLImageElement>)=>{try{await e.currentTarget.decode()}catch{}setLoadedUrl(active.displayUrl)};
- return <div className="propertyModalBackdrop" onMouseDown={onClose}><div ref={modalRef} className={`propertyModal ${p.campaignStatus==="sold"?"sold":""} ${isFullscreen?"galleryFullscreen":""}`} role="dialog" aria-modal="true" aria-label={`Detalhes do imóvel ${p.code}`} onMouseDown={e=>e.stopPropagation()}><button type="button" className="modalClose" onClick={onClose} aria-label="Fechar detalhes do imóvel" title="Fechar detalhes do imóvel"><X/></button>
-  <div ref={galleryRef} className={`modalGallery ${lowSource?"lowSource":""} ${cssFullscreen?"cssFullscreen":""} ${scale>1?"isZoomed":""} ${isDragging?"isDragging":""}`}
-   onWheel={e=>{e.preventDefault();setScaleAt(scale+(e.deltaY<0?.25:-.25),e.clientX,e.clientY)}} onDoubleClick={e=>setScaleAt(scale===1?2:1,e.clientX,e.clientY)}
-   onPointerDown={e=>{if(scale===1||(e.target as HTMLElement).closest("button"))return;e.currentTarget.setPointerCapture(e.pointerId);dragStart.current={x:e.clientX,y:e.clientY,tx:translateX,ty:translateY,moved:false};setIsDragging(true)}} onPointerMove={e=>{if(!dragStart.current)return;const dx=e.clientX-dragStart.current.x,dy=e.clientY-dragStart.current.y;if(Math.abs(dx)+Math.abs(dy)>5)dragStart.current.moved=true;const moved=clampTranslation(dragStart.current.tx+dx,dragStart.current.ty+dy);setTranslateX(moved.x);setTranslateY(moved.y)}} onPointerUp={()=>{dragStart.current=null;setIsDragging(false)}}
-   onTouchStart={e=>{if(e.touches.length===2){pinchStart.current={distance:Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY),scale};return}if(scale===1)touchStart.current=e.changedTouches[0].clientX}} onTouchMove={e=>{if(e.touches.length!==2||!pinchStart.current)return;const distance=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);setScaleAt(pinchStart.current.scale*distance/pinchStart.current.distance,(e.touches[0].clientX+e.touches[1].clientX)/2,(e.touches[0].clientY+e.touches[1].clientY)/2)}} onTouchEnd={e=>{pinchStart.current=null;if(scale>1||touchStart.current===null)return;const delta=e.changedTouches[0].clientX-touchStart.current;touchStart.current=null;if(Math.abs(delta)>45)void selectPhoto(photoIndex+(delta<0?1:-1))}}>
-   {active&&lowSource&&<div className="galleryBackdrop" style={{backgroundImage:`url("${active.thumbnailUrl}")`}}/>}<div className={`galleryLoading ${loaded?"hidden":""}`}/>
-   {active&&(lowSource?<Image key={active.displayUrl} draggable={false} className={`galleryMain contained ${loaded?"loaded":""}`} src={active.displayUrl} alt={active.alt} width={active.width||512} height={active.height||384} unoptimized onLoad={markLoaded} style={{maxWidth:`min(100%, ${active.width||512}px)`,maxHeight:`min(calc(100% - 90px), ${active.height||384}px)`,transform:`translate3d(${translateX}px,${translateY}px,0) scale(${scale})`}}/>:<Image key={active.displayUrl} draggable={false} className={`galleryMain ${loaded?"loaded":""}`} src={active.displayUrl} alt={active.alt} fill quality={92} priority sizes={isFullscreen?"100vw":"(min-width: 1200px) 68vw, (min-width: 768px) 65vw, 100vw"} onLoad={markLoaded} style={{objectFit:"cover",imageRendering:"auto",transform:`translate3d(${translateX}px,${translateY}px,0) scale(${scale})`}}/>)}
-   <div className="galleryToolbar" role="toolbar" aria-label="Controles da galeria"><GalleryControlButton label="Diminuir zoom" onClick={()=>setScaleAt(scale-.25)} disabled={scale<=1}><ZoomOut/></GalleryControlButton><output className="galleryZoomLevel" aria-live="polite">{Math.round(scale*100)}%</output><GalleryControlButton label="Aumentar zoom" onClick={()=>setScaleAt(scale+.25)} disabled={scale>=maxScale()}><ZoomIn/></GalleryControlButton><GalleryControlButton label="Restaurar zoom" variant="iconWithLabel" onClick={resetZoom}><RotateCcw/><span>Restaurar</span></GalleryControlButton>{!isFullscreen&&<GalleryControlButton label="Tela cheia" variant="iconWithLabel" onClick={()=>void enterFullscreen()}><Maximize2/><span>Tela cheia</span></GalleryControlButton>}</div>
-   {isFullscreen&&<GalleryControlButton label="Sair da tela cheia" variant="fullscreenExit" onClick={()=>void exitFullscreen()}><Minimize2/><span>Sair da tela cheia</span></GalleryControlButton>}
-   {p.images.length>1&&<><GalleryControlButton label="Foto anterior" variant="navigation" className="gallery-control gallery-control--navigation prev" disabled={switching} onClick={()=>void selectPhoto(photoIndex-1)}><ChevronLeft/></GalleryControlButton><GalleryControlButton label="Próxima foto" variant="navigation" className="gallery-control gallery-control--navigation next" disabled={switching} onClick={()=>void selectPhoto(photoIndex+1)}><ChevronRight/></GalleryControlButton><span className="galleryCount" aria-live="polite">{photoIndex+1} / {p.images.length}</span><div ref={thumbnailRailRef} className="galleryThumbs" aria-label="Selecionar foto">{p.images.map((photo,index)=><button type="button" className={index===photoIndex?"active":""} onClick={()=>void selectPhoto(index)} aria-label={`Ver foto ${index+1}`} title={`Foto ${index+1}`} aria-current={index===photoIndex} key={photo.thumbnailUrl}><Image src={photo.thumbnailUrl} alt="" fill quality={85} sizes="70px"/></button>)}</div></>}
-  </div><div className="modalInfo"><p className="eyebrow">CÓD. {p.code} <i/> {p.locationLabel}</p><h2>{p.title}</h2><div className="specs">{p.bedrooms!==null&&<span><BedDouble/>{p.bedrooms} dorm.</span>}{p.suites!==null&&<span>{p.suites} suítes</span>}{p.parkingSpaces!==null&&<span>{p.parkingSpaces} vagas</span>}{p.usableArea!==null&&<span><Ruler/>{p.usableArea} m²</span>}</div>
-   {p.campaignStatus==="sold"?<div className="modalPrice soldModalPrice"><small>IMÓVEL VENDIDO</small>{p.originalPrice!==null&&<><span>Último valor anunciado</span><strong>{money.format(p.originalPrice)}</strong></>}</div>:<div className="modalPrice fairModalPrice"><small>{p.discountPercentage>0?"CONDIÇÃO Q OPORTUNIDADE":"PREÇO DE CAMPANHA"}</small>{p.originalPrice!==null&&p.discountPercentage>0&&<span>De <s>{money.format(p.originalPrice)}</s></span>}<strong>{p.discountPercentage>0?"Por ":""}{money.format(p.fairPrice!)}</strong>{p.cashPrice&&<b>OU {money.format(p.cashPrice)} À VISTA</b>}{p.downPayment&&<b>ENTRADA DE {money.format(p.downPayment)}</b>}{p.discountPercentage>0&&<div className="modalFairBenefits"><em>{p.discountPercentage}% de desconto</em><b>Você economiza {money.format(p.savings!)}</b></div>}</div>}
-   {p.campaignStatus==="sold"?<span className="btn soldModalCta" aria-disabled="true">Imóvel vendido</span>:<button className="btn primary" type="button" onClick={()=>openLead(p)}>CONTATAR</button>}</div>
- </div></div>
-}
-
-function Card({p,onSimilar}:{p:PublicCampaignProperty;onSimilar:(p:PublicCampaignProperty)=>void}){
- const [fav,setFav]=useState(false),[details,setDetails]=useState(false),[photoIndex,setPhotoIndex]=useState(0);
- const openLead=useLeadForm();
- useEffect(()=>setFav(JSON.parse(localStorage.getItem("qvista-favs")||"[]").includes(p.code)),[p.code]);
- const toggle=()=>{const a:string[]=JSON.parse(localStorage.getItem("qvista-favs")||"[]");const b=a.includes(p.code)?a.filter(x=>x!==p.code):[...a,p.code];localStorage.setItem("qvista-favs",JSON.stringify(b));setFav(!fav);track("property_favorite",{code:p.code})};
- const sold=p.campaignStatus==="sold",image=p.images[photoIndex];
- useEffect(()=>{if(p.images.length<2)return;for(const index of [(photoIndex-1+p.images.length)%p.images.length,(photoIndex+1)%p.images.length]){const preload=new window.Image();preload.src=p.images[index].displayUrl}},[photoIndex,p.images]);
- const movePhoto=(event:React.MouseEvent,direction:number)=>{event.preventDefault();event.stopPropagation();setPhotoIndex(i=>(i+direction+p.images.length)%p.images.length)};
- const openDetails=()=>{setDetails(true);track("property_view",{code:p.code})};
- return <><article className={`card clickableCard ${sold?"sold":""}`} role="button" tabIndex={0} aria-label={`Ver detalhes do imóvel ${p.code}`} onPointerDown={rememberModalScroll} onClick={e=>{if(!(e.target as HTMLElement).closest("button,a"))openDetails()}} onKeyDown={e=>{if((e.key==="Enter"||e.key===" ")&&e.target===e.currentTarget){e.preventDefault();openDetails()}}}>
-  <div className="cardImage">{image?<Image key={image.displayUrl} className="cardPhoto" src={image.displayUrl} alt={image.alt} fill quality={90} sizes="(max-width: 720px) 100vw, (max-width: 1100px) 50vw, 33vw"/>:<div className="imageFallback">Imagem em atualização</div>}{p.images.length>1&&<><button className="cardArrow prev" onClick={e=>movePhoto(e,-1)} aria-label={`Foto anterior do imóvel ${p.code}`}><ChevronLeft/></button><button className="cardArrow next" onClick={e=>movePhoto(e,1)} aria-label={`Próxima foto do imóvel ${p.code}`}><ChevronRight/></button><span className="cardPhotoCount">{photoIndex+1} / {p.images.length}</span></>}{sold&&<div className="soldBarrier" role="status"><strong>VENDIDA</strong></div>}{!sold&&p.discountPercentage>0&&<div className="fairBadge"><strong>{p.discountPercentage}% OFF</strong></div>}<button onClick={toggle} className={fav?"fav active":"fav"} aria-label={fav?"Remover dos favoritos":"Adicionar aos favoritos"}><Heart/></button><span className="verified">Cód. {p.code}</span></div>
-  <div className="cardBody"><p className="location"><MapPin/>{p.neighborhood}, {p.city}</p><h3>{p.propertyType} em {p.neighborhood}</h3><div className="specs">{p.bedrooms!==null&&<span><BedDouble/>{p.bedrooms} dorm.</span>}{p.suites!==null&&p.suites>0&&<span>{p.suites} suíte{p.suites>1?"s":""}</span>}{p.parkingSpaces!==null&&<span>{p.parkingSpaces} vaga{p.parkingSpaces!==1?"s":""}</span>}{p.usableArea!==null&&<span><Ruler/>{p.usableArea} m²</span>}</div>{!sold?<div className="cardFairPrice">{p.originalPrice!==null&&p.discountPercentage>0&&<span className="fairOriginalPrice">DE <s>{money.format(p.originalPrice)}</s></span>}<small>{p.discountPercentage>0?"POR":"PREÇO DE CAMPANHA"}</small><strong>{money.format(p.fairPrice!)}</strong>{p.cashPrice&&<em className="specialCondition">OU {money.format(p.cashPrice)} À VISTA</em>}{p.downPayment&&<em className="specialCondition">ENTRADA DE {money.format(p.downPayment)}</em>}{p.savings&&<b>VOCÊ ECONOMIZA {money.format(p.savings)}</b>}</div>:<p className="soldCopy">Este imóvel não está mais disponível.</p>}<div className="cardActions">{!sold?<><button className="detailsCta" onClick={openDetails}>Ver detalhes</button><button className="contactCta" type="button" onClick={()=>openLead(p)}>CONTATAR <MessageCircle/></button></>:<><button className="detailsCta" onClick={openDetails}>Ver referência</button><button className="similarCta" onClick={()=>onSimilar(p)}>Ver semelhantes <ArrowRight/></button></>}</div></div>
- </article>{details&&<PropertyModal property={p} onClose={()=>setDetails(false)}/>}</>
-}
-
-function Catalog({filters,applyToken,hydrated,items,loading}:{filters:Filters;applyToken:number;hydrated:boolean;items:PublicCampaignProperty[];loading:boolean}){
- const [shown,setShown]=useState(6),[showAll,setShowAll]=useState(false),[sort,setSort]=useState("discount");
- useEffect(()=>{if(applyToken){document.querySelector("#oportunidades")?.scrollIntoView({behavior:"smooth"});setShown(6);}},[applyToken]);
- useEffect(()=>{if(!hydrated)return;const url=new URL(location.href);filters.beach?url.searchParams.set("praia",filters.beach):url.searchParams.delete("praia");filters.priceRange!=="all"?url.searchParams.set("preco",filters.priceRange):url.searchParams.delete("preco");filters.bedrooms?url.searchParams.set("quartos",String(filters.bedrooms)):url.searchParams.delete("quartos");history.replaceState({},"",url)},[filters,hydrated]);
- const list=useMemo(()=>availableFirst(items.filter(p=>{const price=displayPrice(p);return(!filters.beach||p.beach===filters.beach)&&(filters.bedrooms===0||(filters.bedrooms===4?(p.bedrooms??0)>=4:p.bedrooms===filters.bedrooms))&&(filters.priceRange==="all"||price!==null&&(filters.priceRange==="upto300"?price<=300000:filters.priceRange==="301to400"?price>300000&&price<=400000:price>400000))})).sort((a,b)=>{if(a.campaignStatus!==b.campaignStatus)return a.campaignStatus==="available"?-1:1;if(sort==="low")return(displayPrice(a)??Infinity)-(displayPrice(b)??Infinity);if(sort==="high")return(displayPrice(b)??-1)-(displayPrice(a)??-1);if(sort==="savings")return(b.savings??0)-(a.savings??0);return b.discountPercentage-a.discountPercentage||(b.savings??0)-(a.savings??0)}),[filters,items,sort]);
- const similar=(p:PublicCampaignProperty)=>{document.querySelector("#oportunidades")?.scrollIntoView({behavior:"smooth"});track("similar_click",{code:p.code})};
- const visible=showAll?list.slice(0,shown):list.slice(0,6);
- return <section id="oportunidades" className="catalog propertySection"><div className="propertyCampaignBand"><div className="propertyCampaignContent"><div className="campaignTitleColumn"><span className="campaignLabel">Q OPORTUNIDADE</span><h2 className="campaignTitle">Imóveis selecionados com <strong>condições especiais.</strong></h2></div><div className="campaignLogoColumn"><img src="/images/logo-q-oportunidade.png" alt="Q Oportunidade" className="campaignRightLogo"/></div></div><div className="propertyCampaignCurve" aria-hidden="true"><svg viewBox="0 0 1440 52" preserveAspectRatio="none"><path d="M0 30C310 52 545 48 760 25C1015 0 1218 5 1440 35V52H0Z"/></svg></div></div>
- <div className="propertyCatalogSurface"><div className="catalogInner"><div className="catalogToolbar"><p className="showing">{loading?"Carregando imóveis...":`Mostrando ${visible.length} de ${list.length} imóveis`}</p><label className="catalogSort"><span>Ordenar por</span><select value={sort} onChange={e=>setSort(e.target.value)} aria-label="Ordenar imóveis"><option value="discount">Maior percentual de desconto</option><option value="savings">Maior economia</option><option value="low">Menor preço</option><option value="high">Maior preço</option></select></label></div>
- {loading?<div className="grid">{[0,1,2].map(i=><div className="cardSkeleton" key={i}/>)}</div>:list.length?<><div className="grid">{visible.map(p=><Card p={p} onSimilar={similar} key={p.code}/>)}</div>{!showAll&&list.length>6?<button className="load campaignLoad" onClick={()=>{setShowAll(true);setShown(Math.min(18,list.length))}}>VER TODOS OS IMÓVEIS <KeyRound/><ArrowRight/></button>:shown<list.length&&<button className="load" onClick={()=>setShown(s=>s+12)}>Mostrar mais imóveis <ArrowDown/></button>}</>:<div className="empty"><SlidersHorizontal/><h3>Nenhum imóvel nesta seleção.</h3><p>Limpe os filtros ou escolha outra combinação.</p></div>}</div></div>
- </section>
-}
-
-const BEACH_MEDIA:Record<string,{src:string;fallback?:string;alt:string}>={
- Pitangueiras:{src:"/images/praias/pitangueiras.webp",fallback:"/images/hero-guaruja-desktop.webp",alt:"Vista da Praia de Pitangueiras, Guarujá"},
- Enseada:{src:"/images/praias/enseada.webp",fallback:"/images/enseada.png",alt:"Vista da Praia da Enseada, Guarujá"},
- Tombo:{src:"/images/praias/tombo.webp",fallback:"/images/tombo.png",alt:"Vista da Praia do Tombo, Guarujá"},
-};
-function Beaches({items,onSelect}:{items:PublicCampaignProperty[];onSelect:(beach:string)=>void}){
- const [failedMedia,setFailedMedia]=useState<string[]>([]);
- const availableUnique=Array.from(new Map(items.filter(p=>p.campaignStatus==="available").map(p=>[p.code,p])).values());
- const beaches=Object.entries(BEACH_MEDIA).map(([name,media])=>({name,...media,count:availableUnique.filter(p=>p.beach===name).length})).filter(x=>x.count>0&&!failedMedia.includes(x.name)).slice(0,4);
- return <section id="praias" className="beaches section"><div className="sectionHead"><div><p className="eyebrow">PRAIAS COM OPORTUNIDADES</p><h2>Viva perto do mar,<br/><em>do seu jeito.</em></h2></div><p>Encontre imóveis próximos ao estilo de vida que você procura.</p></div><div className="beachMosaic" data-count={beaches.length}>{beaches.map((beach,index)=><BeachCard key={beach.name} beach={beach} index={index} onSelect={onSelect} onFail={()=>setFailedMedia(current=>[...new Set([...current,beach.name])])}/>)}</div></section>
-}
-function BeachCard({beach,index,onSelect,onFail}:{beach:{name:string;src:string;fallback?:string;alt:string;count:number};index:number;onSelect:(beach:string)=>void;onFail:()=>void}){
- const [src,setSrc]=useState(beach.src);
- return <button className={`beachTile beachTile${index+1}`} onClick={()=>onSelect(beach.name)}><Image className="beachCardImage" src={src} alt={beach.alt} fill sizes="(max-width: 768px) 100vw, 50vw" onError={()=>{if(beach.fallback&&src!==beach.fallback){console.warn(`[Q Oportunidade] Falha na imagem principal da praia ${beach.name}; usando fallback aprovado.`);setSrc(beach.fallback)}else{console.warn(`[Q Oportunidade] Praia omitida por falha de imagem: ${beach.name}.`);onFail()}}}/><span><strong>{beach.name}</strong><small>{beach.count} {beach.count===1?"oportunidade":"oportunidades"}</small></span><ArrowRight/></button>
-}
-function CampaignAbout(){return <><section id="como-funciona" className="campaignAbout"><div><p className="eyebrow">COMO FUNCIONA</p><h2>Uma oportunidade real<br/>pode abrir uma nova porta.</h2></div><div className="howItWorksCopy"><img src="/images/logo-q-oportunidade.png" alt="Q Oportunidade"/><p>A QVista selecionou imóveis no Guarujá com condições especiais por tempo limitado. Você compara, conhece cada detalhe e negocia com acompanhamento próximo, usando dados atuais do inventário.</p></div><KeyRound/></section><section id="contato" className="serviceCta"><img src="/images/logo-dark.png" alt="QVista Inteligência Imobiliária"/><div><p>ENCONTROU A SUA OPORTUNIDADE?</p><h2>Fale com quem conhece<br/>cada canto do Guarujá.</h2></div><a className="btn primary" href={wa("Olá! Acessei a campanha Q Oportunidade e gostaria de conhecer os imóveis disponíveis.")} target="_blank" rel="noopener noreferrer">CONTATAR PELO WHATSAPP <ArrowRight/></a></section></>}
-function WhatsAppFloat(){return <a className="whatsappFloat" href={wa("Olá! Acessei a campanha Q Oportunidade e gostaria de conhecer os imóveis disponíveis.")} target="_blank" rel="noopener noreferrer" aria-label="Atendimento pelo WhatsApp" title="Atendimento pelo WhatsApp"><MessageCircle/></a>}
-const SOCIAL_LINKS={instagram:campaignConfig.instagramUrl,facebook:campaignConfig.facebookUrl,tiktok:campaignConfig.tiktokUrl};
-function Footer(){return <footer><div className="footerBrand"><img src="/images/logo-white.png" alt="QVista Inteligência Imobiliária"/><p>Inteligência imobiliária com conhecimento local, proximidade e cuidado em cada decisão.</p></div><div><strong>Links rápidos</strong><a href="#oportunidades">Oportunidades</a><a href="#praias">Praias</a><a href="#como-funciona">Como funciona</a><a href="https://www.qvista.com.br/politica-de-privacidade" target="_blank" rel="noopener noreferrer">Política de privacidade</a></div><div><strong>QVista</strong>{campaignConfig.companyAddress&&<p>{campaignConfig.companyAddress}</p>}<p>CRECI: {campaignConfig.companyCreci}</p><a href="https://www.qvista.com.br/" target="_blank" rel="noopener noreferrer">Site oficial</a><div className="socialLinks">{SOCIAL_LINKS.instagram&&<a href={SOCIAL_LINKS.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram da QVista"><Instagram/><span>Instagram</span></a>}{SOCIAL_LINKS.facebook&&<a href={SOCIAL_LINKS.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook da QVista"><b>f</b><span>Facebook</span></a>}{SOCIAL_LINKS.tiktok&&<a href={SOCIAL_LINKS.tiktok} target="_blank" rel="noopener noreferrer" aria-label="TikTok da QVista"><b>♪</b><span>TikTok</span></a>}</div></div><small>© 2026 QVista Inteligência Imobiliária. Todos os direitos reservados. Imóveis, valores e disponibilidade sujeitos a alteração.</small></footer>}
-
-export default function Home(){const [filters,setFilters]=useState<Filters>(emptyFilters),[applyToken,setApplyToken]=useState(0),[hydrated,setHydrated]=useState(false),[items,setItems]=useState<PublicCampaignProperty[]>([]),[loading,setLoading]=useState(true),[leadProperty,setLeadProperty]=useState<PublicCampaignProperty|null>(null);const initializedFromUrl=useRef(false);useEffect(()=>{if(initializedFromUrl.current)return;initializedFromUrl.current=true;const params=new URLSearchParams(location.search);const price=params.get("preco");const bedrooms=Number(params.get("quartos")||0);setFilters({beach:params.get("praia")||"",priceRange:["upto300","301to400","above401"].includes(price||"")?price as PriceRange:"all",bedrooms:[0,1,2,3,4].includes(bedrooms)?bedrooms:0});setHydrated(true)},[]);useEffect(()=>{const controller=new AbortController();fetch("/api/feirao/properties",{signal:controller.signal}).then(r=>{if(!r.ok)throw new Error("unavailable");return r.json()}).then(data=>{const properties=Array.isArray(data.properties)?data.properties:[];setItems(properties);try{const allowed=new Set(properties.map((property:PublicCampaignProperty)=>property.code)),stored=JSON.parse(localStorage.getItem("qvista-favs")||"[]");if(Array.isArray(stored))localStorage.setItem("qvista-favs",JSON.stringify(stored.filter(code=>typeof code==="string"&&allowed.has(code))))}catch{localStorage.removeItem("qvista-favs")}}).catch(()=>{}).finally(()=>setLoading(false));return()=>controller.abort()},[]);const selectBeach=(beach:string)=>{setFilters(f=>({...f,beach}));setApplyToken(t=>t+1)},openLead=(property:PublicCampaignProperty)=>{if(property.campaignStatus!=="available")return;setLeadProperty(property);track("property_lead_open",{code:property.code})};return <LeadContext.Provider value={openLead}><Hero items={items}/><main><QuickSearch value={filters} onChange={setFilters} onApply={()=>setApplyToken(t=>t+1)} items={items}/><FeaturedDeal items={items}/><Catalog filters={filters} applyToken={applyToken} hydrated={hydrated} items={items} loading={loading}/><Beaches items={items} onSelect={selectBeach}/><CampaignAbout/></main><Footer/><WhatsAppFloat/>{leadProperty&&<LeadModal key={leadProperty.code} property={leadProperty} onClose={()=>setLeadProperty(null)}/>}</LeadContext.Provider>}

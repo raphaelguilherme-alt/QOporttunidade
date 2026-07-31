@@ -467,3 +467,5 @@ section[id]{scroll-margin-top:110px}
  .mobileThumbnailRail{max-width:100%;overflow-x:auto;overflow-y:hidden}
 }
 .leadTurnstile{min-height:65px;display:grid;place-items:center}.leadFieldError{margin:-10px 0 0;color:#aa2637;font-size:11px;font-weight:650;text-align:center}
+.card{content-visibility:auto;contain-intrinsic-size:520px}.cardTitleButton{width:100%;border:0;padding:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}.cardTitleButton:focus-visible{outline:3px solid var(--qo-cyan);outline-offset:4px}.leadModal label{display:block}.leadModal form>small{margin-top:-12px;color:#aa2637;font-size:11px;font-weight:650;letter-spacing:0}.leadHoneypot{position:absolute!important;left:-10000px!important;top:auto!important;width:1px!important;height:1px!important;margin:0!important;padding:0!important;overflow:hidden!important}
+.leadModal form{gap:7px}.leadModal label:not(:first-of-type){margin-top:11px}.leadSubmit{margin-top:9px}

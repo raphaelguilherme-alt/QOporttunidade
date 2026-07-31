@@ -25,7 +25,7 @@ as $$
 declare
   current_count bigint;
   current_expiry timestamptz;
-  current_time timestamptz := clock_timestamp();
+  v_now timestamptz := clock_timestamp();
 begin
   if p_key is null
     or char_length(p_key) not between 1 and 200
@@ -38,28 +38,28 @@ begin
   end if;
 
   insert into private.qopp_security_counters as counters (key, counter, expires_at)
-  values (p_key, 1, current_time + make_interval(secs => p_window_seconds))
+  values (p_key, 1, v_now + make_interval(secs => p_window_seconds))
   on conflict (key) do update
   set
     counter = case
-      when counters.expires_at <= current_time then 1
+      when counters.expires_at <= v_now then 1
       else counters.counter + 1
     end,
     expires_at = case
-      when counters.expires_at <= current_time
-        then current_time + make_interval(secs => p_window_seconds)
+      when counters.expires_at <= v_now
+        then v_now + make_interval(secs => p_window_seconds)
       else counters.expires_at
     end
   returning counter, expires_at into current_count, current_expiry;
 
   if random() < 0.01 then
     delete from private.qopp_security_counters
-    where expires_at < current_time - interval '1 day';
+    where expires_at < v_now - interval '1 day';
   end if;
 
   return query select
     current_count <= p_limit,
-    greatest(1, ceil(extract(epoch from current_expiry - current_time))::integer);
+    greatest(1, ceil(extract(epoch from current_expiry - v_now))::integer);
 end;
 $$;
 
@@ -74,7 +74,7 @@ set search_path = ''
 as $$
 declare
   affected integer;
-  current_time timestamptz := clock_timestamp();
+  v_now timestamptz := clock_timestamp();
 begin
   if p_key is null
     or char_length(p_key) not between 1 and 200
@@ -85,11 +85,11 @@ begin
   end if;
 
   insert into private.qopp_security_counters as counters (key, counter, expires_at)
-  values (p_key, 1, current_time + make_interval(secs => p_ttl_seconds))
+  values (p_key, 1, v_now + make_interval(secs => p_ttl_seconds))
   on conflict (key) do update
   set counter = 1,
-      expires_at = current_time + make_interval(secs => p_ttl_seconds)
-  where counters.expires_at <= current_time;
+      expires_at = v_now + make_interval(secs => p_ttl_seconds)
+  where counters.expires_at <= v_now;
 
   get diagnostics affected = row_count;
   return affected = 1;

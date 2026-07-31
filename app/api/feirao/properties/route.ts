@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCampaignProperties } from "@/lib/imobzi.server";
+import { getCatalogSnapshot } from "@/lib/catalog-snapshot.server";
 import { anonymousKey, clientIp, enforceRateLimit } from "@/lib/security.server";
 
 export const runtime = "nodejs";
@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   let stage: "security" | "catalog" = "security";
+  const startedAt = performance.now();
   try {
     const ipHash = anonymousKey(`catalog:${clientIp(request)}`);
     const limit = await enforceRateLimit(`catalog:${ipHash}`, 30, 60);
@@ -15,10 +16,13 @@ export async function GET(request: NextRequest) {
       { status: 429, headers: { "Cache-Control": "no-store", "Retry-After": String(limit.retryAfter) } },
     );
     stage = "catalog";
-    const catalog = await getCampaignProperties();
+    const catalog = await getCatalogSnapshot();
+    const duration = Math.round(performance.now() - startedAt);
+    const snapshotAgeSeconds = Math.max(0, Math.round((Date.now() - Date.parse(catalog.updatedAt)) / 1000));
     return NextResponse.json({ properties: catalog.properties, updatedAt: catalog.updatedAt }, {
       headers: {
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=900",
+        "Server-Timing": `catalog;dur=${duration}, snapshot;desc=\"age ${snapshotAgeSeconds}s\"`,
         "X-Content-Type-Options": "nosniff",
       },
     });
