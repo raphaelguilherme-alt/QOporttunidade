@@ -29,7 +29,7 @@ export const PROMOTIONAL_INVENTORY = [
   { code: "5339", promotionalPriceCents: 33000000 },
   { code: "13045", promotionalPriceCents: 33000000 },
   { code: "1826", promotionalPriceCents: 33500000 },
-  { code: "3392", promotionalPriceCents: 33900000 },
+  { code: "3392", promotionalPriceCents: 39800000 },
   { code: "12423", promotionalPriceCents: 34000000 },
   { code: "12132", promotionalPriceCents: 34500000 },
   { code: "13167", promotionalPriceCents: 34500000 },

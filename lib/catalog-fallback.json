@@ -365,7 +365,7 @@
         }
       ],
       "suites": 1,
-      "savings": 60000,
+      "savings": 1000,
       "bedrooms": 2,
       "features": [
         "Churrasqueira",
@@ -374,7 +374,7 @@
       ],
       "bathrooms": 3,
       "cashPrice": null,
-      "fairPrice": 339000,
+      "fairPrice": 398000,
       "salePrice": 399000,
       "updatedAt": "2026-07-24T23:51:13.917931Z",
       "usableArea": 113,
@@ -385,8 +385,8 @@
       "originalPrice": 399000,
       "parkingSpaces": 1,
       "campaignStatus": "available",
-      "effectivePrice": 339000,
-      "discountPercentage": 15
+      "effectivePrice": 398000,
+      "discountPercentage": 0
     },
     {
       "city": "Guarujá",
