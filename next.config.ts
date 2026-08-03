@@ -2,11 +2,11 @@ import type { NextConfig } from "next";
 const production = process.env.NODE_ENV === "production";
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${production ? "" : " 'unsafe-eval'"} https://challenges.cloudflare.com`,
+  `script-src 'self' 'unsafe-inline'${production ? "" : " 'unsafe-eval'"} https://challenges.cloudflare.com https://www.googletagmanager.com`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://lh3.googleusercontent.com",
+  "img-src 'self' data: blob: https://lh3.googleusercontent.com https://www.google.com https://www.google.com.br https://googleads.g.doubleclick.net https://pagead2.googlesyndication.com",
   "font-src 'self' data:",
-  `connect-src 'self' https://challenges.cloudflare.com${production ? "" : " ws: wss:"}`,
+  `connect-src 'self' https://challenges.cloudflare.com https://www.google-analytics.com https://region1.google-analytics.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://pagead2.googlesyndication.com${production ? "" : " ws: wss:"}`,
   "frame-src https://challenges.cloudflare.com",
   "worker-src 'self' blob:",
   "object-src 'none'",

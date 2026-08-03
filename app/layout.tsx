@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import GoogleTracking from "./google-tracking";
 import "./globals.css";
 
 const siteUrl = "https://oportunidade.qvista.com.br";
@@ -33,5 +34,5 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#05072a" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="pt-BR"><body>{children}</body></html>;
+  return <html lang="pt-BR"><body>{children}<GoogleTracking/></body></html>;
 }

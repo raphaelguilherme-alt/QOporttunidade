@@ -24,7 +24,7 @@ export function buildImobziLead(input: { name: string; phone: string; propertyCo
   const ddd = input.phone.slice(0, 2);
   const localPhone = input.phone.slice(2);
   return {
-    leadOrigin: "Google",
+    leadOrigin: "Site",
     title: "Site Q Oportunidades",
     timestamp: new Date().toISOString(),
     clientListingId: input.propertyCode,

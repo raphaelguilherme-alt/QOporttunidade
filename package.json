@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:gallery": "node scripts/test-gallery-quality.mjs",
+    "test:tracking": "node scripts/test-google-tracking.mjs",
     "test:readiness": "node scripts/test-production-readiness.mjs"
   },
   "dependencies": {

@@ -21,6 +21,8 @@ for (const viewport of [{ width: 1366, height: 768 }, { width: 390, height: 844 
   const runtimeErrors = [];
   page.on("pageerror", error => runtimeErrors.push(error.message));
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  const consent = page.getByRole("dialog", { name: "Sua privacidade importa" });
+  if (await consent.count()) await consent.getByRole("button", { name: "Recusar" }).click();
   await page.locator(".cardTitleButton").first().waitFor();
   assert.equal(await page.locator("article.card").count(), 6);
   await page.getByRole("button", { name: /Mostrar mais imóveis/i }).click();
