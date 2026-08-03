@@ -17,6 +17,7 @@ declare global {
 }
 
 const canTrack = () => typeof window !== "undefined" && typeof window.gtag === "function";
+let lastViewItem: { code: string; at: number } | null = null;
 
 export function setGoogleConsent(choice: ConsentChoice) {
   if (typeof window === "undefined") return;
@@ -47,6 +48,9 @@ const item = (property: PublicCampaignProperty, index?: number) => ({
 });
 
 export function trackViewItem(property: PublicCampaignProperty) {
+  const now = Date.now();
+  if (lastViewItem?.code === property.code && now - lastViewItem.at < 1000) return;
+  lastViewItem = { code: property.code, at: now };
   trackEvent("view_item", {
     send_to: GA_MEASUREMENT_ID,
     currency: "BRL",
@@ -99,4 +103,3 @@ export function trackGenerateLead(property: PublicCampaignProperty) {
     });
   }
 }
-
